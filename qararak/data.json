@@ -1,0 +1,23 @@
+{
+  "pois": [
+    { "name": "AUC New Cairo Campus", "category": "university", "lat": 30.0189, "lng": 31.4996 },
+    { "name": "Cairo Festival City Mall", "category": "mall", "lat": 30.0287, "lng": 31.4106 },
+    { "name": "Concordia International School", "category": "school", "lat": 30.0281, "lng": 31.4472 },
+    { "name": "American International School", "category": "school", "lat": 30.0158, "lng": 31.4685 },
+    { "name": "Cleopatra Hospital - New Cairo", "category": "hospital", "lat": 30.0269, "lng": 31.4381 },
+    { "name": "New Administrative Capital Business District", "category": "business_district", "lat": 30.0131, "lng": 31.7269 },
+    { "name": "Ring Road Access Point", "category": "main_road", "lat": 30.0212, "lng": 31.4302 },
+    { "name": "Point 90 Mall / Transport Hub", "category": "transport", "lat": 30.0219, "lng": 31.4230 },
+    { "name": "Al Rehab Central Park", "category": "green_space", "lat": 30.0602, "lng": 31.4922 },
+    { "name": "Downtown Katameya", "category": "mall", "lat": 29.9908, "lng": 31.4300 },
+    { "name": "Katameya Hospital", "category": "hospital", "lat": 29.9822, "lng": 31.4211 }
+  ],
+  "comparables": [
+    { "district": "New Cairo - Fifth Settlement", "area_sqm": 150, "price": 6300000, "monthly_rent": 28000 },
+    { "district": "New Cairo - Fifth Settlement", "area_sqm": 160, "price": 6800000, "monthly_rent": 30000 },
+    { "district": "New Cairo - Fifth Settlement", "area_sqm": 140, "price": 5700000, "monthly_rent": 26000 },
+    { "district": "New Cairo - Fifth Settlement", "area_sqm": 170, "price": 7300000, "monthly_rent": 32000 },
+    { "district": "New Cairo - Katameya", "area_sqm": 155, "price": 5900000, "monthly_rent": 25000 },
+    { "district": "New Cairo - Katameya", "area_sqm": 165, "price": 6200000, "monthly_rent": 27000 }
+  ]
+}
