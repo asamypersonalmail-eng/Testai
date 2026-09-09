@@ -450,13 +450,15 @@
         <label class="dropzone" id="dropzone">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
           <div>Drop service_catalog.json files here</div>
-          <div class="dz-hint">or click to browse &middot; multiple catalogs supported</div>
+          <div class="dz-hint">or click to browse &middot; multiple catalogs and review overlays supported</div>
           <input type="file" id="fileInput" accept="application/json,.json" multiple>
         </label>
         <div id="catalogList" style="margin-top:10px;"></div>
+        <div id="overlayList" style="margin-top:6px;"></div>
         <div class="btn-row" id="catalogActions" style="display:none;">
           <button class="btn small" id="clearAllBtn">Clear all</button>
           <button class="btn small" id="exportBtn">Export merged JSON</button>
+          <button class="btn small" id="exportOverlayBtn">Export review overlay</button>
         </div>
       </div>
     </div>
@@ -606,8 +608,10 @@
   // Shared state
   // ======================================================================
   var STORAGE_KEY = "hdb_explorer_catalogs_v1";
+  var OVERLAY_STORAGE_KEY = "hdb_explorer_review_overlays_v1";
   var THEME_KEY = "hdb_explorer_theme";
   var catalogs = [];      // {id, fileName, size, data, visible}
+  var reviewOverlays = []; // {id, fileName, data} — review-only files (see buildReviewOverlay), auto-applied on rebuild()
   var services = [];      // flattened, one entry per service across all catalogs
   var catalogState = { search:"", methods:new Set(), tags:new Set(), backends:new Set() };
   var activeTab = "catalog";
@@ -694,13 +698,17 @@
         return { id:c.id, fileName:c.fileName, size:c.size, data:c.data, visible:c.visible };
       });
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      localStorage.setItem(OVERLAY_STORAGE_KEY, JSON.stringify(reviewOverlays));
     }catch(e){ /* storage full or unavailable — session state still works */ }
   }
   function loadPersisted(){
     try{
       var raw = localStorage.getItem(STORAGE_KEY);
-      if(!raw) return;
-      JSON.parse(raw).forEach(function(c){ catalogs.push(c); });
+      if(raw) JSON.parse(raw).forEach(function(c){ catalogs.push(c); });
+    }catch(e){ /* ignore corrupt storage */ }
+    try{
+      var rawOverlays = localStorage.getItem(OVERLAY_STORAGE_KEY);
+      if(rawOverlays) JSON.parse(rawOverlays).forEach(function(o){ reviewOverlays.push(o); });
     }catch(e){ /* ignore corrupt storage */ }
   }
 
@@ -718,10 +726,13 @@
       reader.onload = function(e){
         try{
           var data = JSON.parse(e.target.result);
-          if(!data || !Array.isArray(data.services)){
-            throw new Error("File does not contain a \"services\" array");
+          if(data && data.catalog_review_overlay === true){
+            reviewOverlays.push({ id: uid(), fileName: file.name, data: data });
+          }else if(data && Array.isArray(data.services)){
+            catalogs.push({ id: uid(), fileName: file.name, size: file.size, data: data, visible: true });
+          }else{
+            throw new Error("File is neither a service catalog (\"services\" array) nor a review overlay (\"catalog_review_overlay\": true)");
           }
-          catalogs.push({ id: uid(), fileName: file.name, size: file.size, data: data, visible: true });
         }catch(err){
           alert("Could not load \"" + file.name + "\":\n" + err.message);
         }finally{
@@ -743,11 +754,86 @@
     persist();
     rebuild();
   }
-  function clearAll(){
-    if(!confirm("Remove all loaded catalogs?")) return;
-    catalogs = [];
-    localStorage.removeItem(STORAGE_KEY);
+  function removeOverlay(id){
+    reviewOverlays = reviewOverlays.filter(function(o){ return o.id !== id; });
+    persist();
     rebuild();
+  }
+  function clearAll(){
+    if(!confirm("Remove all loaded catalogs and review overlays?")) return;
+    catalogs = [];
+    reviewOverlays = [];
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(OVERLAY_STORAGE_KEY);
+    rebuild();
+  }
+
+  // ======================================================================
+  // Review overlays — a small separate file carrying only your review
+  // edits (the Reviewed flag + backend request/response samples), so you
+  // never have to re-upload a full merged catalog. It auto-applies onto
+  // whatever catalog(s) are loaded, in either upload order, and re-applies
+  // whenever the catalog is regenerated as long as service_name / backend
+  // node_name+backend_system+backend_source_flow stay the same (which
+  // static analysis of the same flow always produces deterministically).
+  // ======================================================================
+  function backendOverlayKey(b){
+    return (b.node_name||"") + "||" + (b.backend_system||"") + "||" + (b.backend_source_flow||"");
+  }
+
+  function buildReviewOverlay(){
+    var reviews = {};
+    services.forEach(function(s){
+      var svc = s.raw;
+      var backendOverrides = {};
+      (svc.backends||[]).forEach(function(b){
+        if(b.request || b.response){
+          backendOverrides[backendOverlayKey(b)] = { request: b.request || null, response: b.response || null };
+        }
+      });
+      if(svc.reviewed || Object.keys(backendOverrides).length){
+        reviews[svc.service_name] = { reviewed: !!svc.reviewed, backends: backendOverrides };
+      }
+    });
+    return { catalog_review_overlay: true, generated_at: new Date().toISOString(), reviews: reviews };
+  }
+
+  function applyReviewOverlays(){
+    if(!reviewOverlays.length) return;
+    services.forEach(function(s){
+      var svc = s.raw;
+      reviewOverlays.forEach(function(ov){
+        var entry = ov.data.reviews && ov.data.reviews[svc.service_name];
+        if(!entry) return;
+        if(entry.reviewed) svc.reviewed = true;
+        (svc.backends||[]).forEach(function(b){
+          var bOv = entry.backends && entry.backends[backendOverlayKey(b)];
+          if(bOv){
+            if(bOv.request) b.request = bOv.request;
+            if(bOv.response) b.response = bOv.response;
+          }
+        });
+      });
+    });
+  }
+
+  function renderOverlayList(){
+    var el = document.getElementById("overlayList");
+    if(!el) return;
+    if(!reviewOverlays.length){ el.innerHTML = ""; return; }
+    el.innerHTML = reviewOverlays.map(function(o){
+      var count = Object.keys(o.data.reviews || {}).length;
+      return '<div class="catalog-item">' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div class="ci-name">📋 ' + escapeHtml(o.fileName) + '</div>' +
+          '<div class="ci-meta">' + count + ' reviewed service(s) &middot; auto-applied</div>' +
+        '</div>' +
+        '<button class="ci-remove" data-remove-overlay="' + o.id + '" title="Remove">&times;</button>' +
+      '</div>';
+    }).join("");
+    el.querySelectorAll("[data-remove-overlay]").forEach(function(btn){
+      btn.addEventListener("click", function(){ removeOverlay(btn.getAttribute("data-remove-overlay")); });
+    });
   }
 
   // ======================================================================
@@ -775,7 +861,10 @@
       });
     });
 
+    applyReviewOverlays();
+
     renderCatalogList();
+    renderOverlayList();
     renderCatalogFilters();
     renderGlobalStats();
 
@@ -1279,6 +1368,17 @@
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "merged_service_catalog.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+
+  document.getElementById("exportOverlayBtn").addEventListener("click", function(){
+    var overlay = buildReviewOverlay();
+    var blob = new Blob([JSON.stringify(overlay, null, 2)], {type:"application/json"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "review_overlay.json";
     document.body.appendChild(a);
     a.click();
     a.remove();
