@@ -326,6 +326,13 @@
   .backend-card .bc-node{font-weight:700;color:var(--text);}
   .backend-card .bc-sys{background:var(--accent-dim);color:var(--accent-2);border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;}
   .backend-card .bc-url{font-family:var(--mono);font-size:11px;color:var(--text-dim);word-break:break-all;}
+  .bc-req-input,.bc-resp-input{
+    width:100%;resize:vertical;font-family:var(--mono);font-size:11px;line-height:1.4;
+    background:var(--bg-1);color:var(--text);border:1px solid var(--border-light);border-radius:5px;
+    padding:6px 8px;box-sizing:border-box;
+  }
+  .bc-req-input:focus,.bc-resp-input:focus{outline:none;border-color:var(--accent);}
+  .reviewed-toggle input[type=checkbox]{accent-color:var(--accent);width:14px;height:14px;}
   .proto-pill{
     display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;
     background:var(--bg-3);color:var(--text-dim);margin-right:6px;
@@ -532,6 +539,7 @@
                     <th style="width:150px;">Tags</th>
                     <th style="width:70px;">Backends</th>
                     <th style="width:130px;">Source</th>
+                    <th style="width:80px;">Reviewed</th>
                   </tr>
                 </thead>
                 <tbody id="tableBody"></tbody>
@@ -579,6 +587,9 @@
     <div class="dh-summary" id="drawerSummary"></div>
     <div class="drawer-actions">
       <button class="btn primary crossnav-btn" id="viewInGraphBtn">🕸️ View in Dependency Graph</button>
+      <label class="reviewed-toggle" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--text-dim);cursor:pointer;">
+        <input type="checkbox" id="drawerReviewedCb"> Reviewed
+      </label>
     </div>
   </div>
   <div class="drawer-body" id="drawerBody"></div>
@@ -1032,7 +1043,7 @@
     var body = document.getElementById("tableBody");
     document.getElementById("resultsCount").textContent = list.length + " service" + (list.length===1?"":"s");
     if(!list.length){
-      body.innerHTML = '<tr><td colspan="5"><div class="empty-state" style="padding:30px 10px;"><h3>No matches</h3><p>Try adjusting your search or filters.</p></div></td></tr>';
+      body.innerHTML = '<tr><td colspan="6"><div class="empty-state" style="padding:30px 10px;"><h3>No matches</h3><p>Try adjusting your search or filters.</p></div></td></tr>';
       return;
     }
     body.innerHTML = list.map(function(s){
@@ -1046,12 +1057,33 @@
         '<td>' + (s.tags||[]).map(function(t){return '<span class="tag-pill">'+escapeHtml(t)+'</span>';}).join("") + '</td>' +
         '<td>' + (s.backends ? s.backends.length : 0) + '</td>' +
         '<td><span class="src-pill" title="' + escapeAttr(s.fileName) + '">' + escapeHtml(truncate(s.catalogName, 16)) + '</span></td>' +
+        '<td style="text-align:center;"><input type="checkbox" class="reviewed-cb" data-key="' + s.key + '" ' + (s.raw.reviewed ? "checked" : "") + ' title="Mark this service as reviewed"></td>' +
       '</tr>';
     }).join("");
 
     body.querySelectorAll("tr[data-key]").forEach(function(row){
-      row.addEventListener("click", function(){ openDetail(row.getAttribute("data-key")); });
+      row.addEventListener("click", function(e){
+        if(e.target.classList.contains("reviewed-cb")) return;
+        openDetail(row.getAttribute("data-key"));
+      });
     });
+    body.querySelectorAll(".reviewed-cb").forEach(function(cb){
+      cb.addEventListener("click", function(e){ e.stopPropagation(); });
+      cb.addEventListener("change", function(e){
+        setReviewed(cb.getAttribute("data-key"), cb.checked);
+      });
+    });
+  }
+
+  function setReviewed(key, value){
+    var s = services.find(function(x){ return x.key === key; });
+    if(!s) return;
+    s.raw.reviewed = !!value;
+    if(currentDrawerKey === key){
+      var drawerCb = document.getElementById("drawerReviewedCb");
+      if(drawerCb) drawerCb.checked = !!value;
+    }
+    persist();
   }
 
   var searchDebounce;
@@ -1086,6 +1118,14 @@
     document.getElementById("drawerName").textContent = s.service_name;
     document.getElementById("drawerPath").textContent = s.path;
     document.getElementById("drawerSummary").textContent = swagger.summary || "";
+
+    var drawerCb = document.getElementById("drawerReviewedCb");
+    drawerCb.checked = !!svc.reviewed;
+    drawerCb.onchange = function(){
+      setReviewed(key, drawerCb.checked);
+      var row = document.querySelector('tr[data-key="' + key + '"] .reviewed-cb');
+      if(row) row.checked = drawerCb.checked;
+    };
 
     var html = "";
     html += '<div class="dsection"><h4>Overview</h4><dl class="kv-grid">' +
@@ -1146,11 +1186,17 @@
 
     html += '<div class="dsection"><h4>Backend Systems (' + backends.length + ')</h4>';
     if(backends.length){
-      backends.forEach(function(b){
+      backends.forEach(function(b, bIdx){
         html += '<div class="backend-card">' +
           '<div class="bc-top"><span class="bc-node">' + escapeHtml(b.node_name||"") + '</span><span class="bc-sys">' + escapeHtml(b.backend_system||"") + '</span></div>' +
           '<div class="bc-url"><span class="proto-pill">' + escapeHtml(b.protocol||"") + '</span>' + escapeHtml(b.url||"") + '</div>' +
           '<div style="color:var(--text-faint);margin-top:4px;">host: <code class="inline">' + escapeHtml(b.host||"") + '</code>' + (b.port ? '  &middot;  port: <code class="inline">'+escapeHtml(String(b.port))+'</code>' : '') + '</div>' +
+          '<div class="bc-reqresp" style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+            '<div><div class="bc-reqresp-label" style="font-size:10.5px;font-weight:700;color:var(--text-faint);margin-bottom:3px;">Request</div>' +
+              '<textarea class="bc-req-input" data-bidx="' + bIdx + '" rows="4" placeholder="Sample backend request (filled in during manual review)…">' + escapeHtml(b.request || "") + '</textarea></div>' +
+            '<div><div class="bc-reqresp-label" style="font-size:10.5px;font-weight:700;color:var(--text-faint);margin-bottom:3px;">Response</div>' +
+              '<textarea class="bc-resp-input" data-bidx="' + bIdx + '" rows="4" placeholder="Sample backend response (filled in during manual review)…">' + escapeHtml(b.response || "") + '</textarea></div>' +
+          '</div>' +
         '</div>';
       });
     }else{
@@ -1161,6 +1207,19 @@
     document.getElementById("drawerBody").innerHTML = html;
     document.getElementById("overlay").classList.add("show");
     document.getElementById("drawer").classList.add("show");
+
+    document.querySelectorAll(".bc-req-input").forEach(function(ta){
+      ta.addEventListener("change", function(){
+        backends[Number(ta.getAttribute("data-bidx"))].request = ta.value;
+        persist();
+      });
+    });
+    document.querySelectorAll(".bc-resp-input").forEach(function(ta){
+      ta.addEventListener("change", function(){
+        backends[Number(ta.getAttribute("data-bidx"))].response = ta.value;
+        persist();
+      });
+    });
   }
 
   function renderSchemaBlock(schema){

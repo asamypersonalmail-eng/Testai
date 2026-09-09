@@ -198,7 +198,7 @@ def parameter_rows(params: List[Dict[str, Any]]) -> List[Tuple[str, str, str, st
     return rows
 
 
-def backend_rows(backends: List[Dict[str, Any]]) -> List[Tuple[str, str, str, str, str, str]]:
+def backend_rows(backends: List[Dict[str, Any]]) -> List[Tuple[str, str, str, str, str, str, str, str]]:
     rows = []
     for b in backends:
         if b.get("url"):
@@ -210,6 +210,7 @@ def backend_rows(backends: List[Dict[str, Any]]) -> List[Tuple[str, str, str, st
         rows.append((
             b.get("node_name", ""), b.get("backend_system", ""), b.get("protocol", ""),
             url_text, b.get("resolution", ""), b.get("confidence", ""),
+            b.get("request") or "(not reviewed yet)", b.get("response") or "(not reviewed yet)",
         ))
     return rows
 
@@ -271,6 +272,8 @@ def render_service_md(svc: Dict[str, Any], catalog_name: str) -> str:
     if tags:
         out += [f"_Tags: {', '.join(tags)}_", ""]
     out += [f"_Source catalog: {catalog_name}_", ""]
+    reviewed = "✅ Reviewed" if svc.get("reviewed") else "⚠️ Not reviewed"
+    out += [f"_Review status: {reviewed}_", ""]
 
     out += ["### Input", "", md_table(
         ["Name", "In", "Type", "Required", "Description"],
@@ -298,7 +301,7 @@ def render_service_md(svc: Dict[str, Any], catalog_name: str) -> str:
     out.append("")
 
     out += ["### Backend Operations Used", "", md_table(
-        ["Node", "Backend System", "Protocol", "URL", "Resolution", "Confidence"],
+        ["Node", "Backend System", "Protocol", "URL", "Resolution", "Confidence", "Sample Request", "Sample Response"],
         backend_rows(backends), "This service does not call any backend system directly or via downstream flows",
     )]
 
@@ -419,6 +422,10 @@ def write_docx(catalogs: List[Dict[str, Any]], output_path: Path) -> None:
                 r.italic = True
             r = doc.add_paragraph().add_run(f"Source catalog: {catalog_name}")
             r.italic = True
+            reviewed = "Reviewed" if svc.get("reviewed") else "Not reviewed"
+            r = doc.add_paragraph().add_run(f"Review status: {reviewed}")
+            r.italic = True
+            r.bold = True
 
             doc.add_heading("Input", level=3)
             add_table(
@@ -444,7 +451,7 @@ def write_docx(catalogs: List[Dict[str, Any]], output_path: Path) -> None:
 
             doc.add_heading("Backend Operations Used", level=3)
             add_table(
-                ["Node", "Backend System", "Protocol", "URL", "Resolution", "Confidence"],
+                ["Node", "Backend System", "Protocol", "URL", "Resolution", "Confidence", "Sample Request", "Sample Response"],
                 backend_rows(backends), "This service does not call any backend system directly or via downstream flows.",
             )
 
