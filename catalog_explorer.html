@@ -449,8 +449,8 @@
       <div class="panel-body">
         <label class="dropzone" id="dropzone">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
-          <div>Drop service_catalog.json files here</div>
-          <div class="dz-hint">or click to browse &middot; multiple catalogs and review overlays supported</div>
+          <div>Drop *_ServiceCatalog.json files here</div>
+          <div class="dz-hint">or click to browse &middot; select any mix of *_ServiceCatalog.json and *_ServiceCatalog_overrides.json &mdash; each is auto-routed and applied</div>
           <input type="file" id="fileInput" accept="application/json,.json" multiple>
         </label>
         <div id="catalogList" style="margin-top:10px;"></div>
@@ -726,12 +726,18 @@
       reader.onload = function(e){
         try{
           var data = JSON.parse(e.target.result);
-          if(data && data.catalog_review_overlay === true){
+          // "<bar>_ServiceCatalog_overrides.json" / "<bar>_ServiceCatalog.json" is
+          // ace_service_catalog.py's and this page's own naming convention, so a
+          // matching filename is trusted first — content shape (catalog_review_overlay
+          // marker / services array) is the fallback for files that got renamed.
+          var isOverlayByName = /_ServiceCatalog_overrides\.json$/i.test(file.name);
+          var isCatalogByName = !isOverlayByName && /_ServiceCatalog\.json$/i.test(file.name);
+          if(isOverlayByName || (!isCatalogByName && data && data.catalog_review_overlay === true)){
             reviewOverlays.push({ id: uid(), fileName: file.name, data: data });
-          }else if(data && Array.isArray(data.services)){
+          }else if(isCatalogByName || (data && Array.isArray(data.services))){
             catalogs.push({ id: uid(), fileName: file.name, size: file.size, data: data, visible: true });
           }else{
-            throw new Error("File is neither a service catalog (\"services\" array) nor a review overlay (\"catalog_review_overlay\": true)");
+            throw new Error("File is neither a service catalog (\"<bar>_ServiceCatalog.json\") nor a review overlay (\"<bar>_ServiceCatalog_overrides.json\")");
           }
         }catch(err){
           alert("Could not load \"" + file.name + "\":\n" + err.message);
@@ -779,6 +785,24 @@
   // ======================================================================
   function backendOverlayKey(b){
     return (b.node_name||"") + "||" + (b.backend_system||"") + "||" + (b.backend_source_flow||"");
+  }
+
+  // Derives "<barFileName>" from whatever's loaded, for the
+  // "<barFileName>_ServiceCatalog_overrides.json" export name — matching
+  // ace_service_catalog.py's own "<barFileName>_ServiceCatalog.json"
+  // convention so the two files visibly pair up in a file listing.
+  function deriveBarStem(){
+    for(var i = 0; i < catalogs.length; i++){
+      var src = catalogs[i].data && catalogs[i].data.source;
+      if(src && src.bar_file){
+        return String(src.bar_file).replace(/\.bar$/i, "");
+      }
+    }
+    for(var j = 0; j < catalogs.length; j++){
+      var m = /^(.*)_ServiceCatalog\.json$/i.exec(catalogs[j].fileName || "");
+      if(m) return m[1];
+    }
+    return "review";
   }
 
   function buildReviewOverlay(){
@@ -1378,7 +1402,7 @@
     var blob = new Blob([JSON.stringify(overlay, null, 2)], {type:"application/json"});
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "review_overlay.json";
+    a.download = deriveBarStem() + "_ServiceCatalog_overrides.json";
     document.body.appendChild(a);
     a.click();
     a.remove();

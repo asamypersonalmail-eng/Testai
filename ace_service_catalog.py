@@ -183,7 +183,8 @@ def main(argv: List[str] | None = None) -> int:
         logger.exception("Unrecoverable error while analyzing '%s'", args.bar)
         return 1
 
-    (output_dir / "service_catalog.json").write_text(
+    catalog_filename = f"{bar_path.stem}_ServiceCatalog.json"
+    (output_dir / catalog_filename).write_text(
         json.dumps(catalog, indent=2, ensure_ascii=False, sort_keys=False), encoding="utf-8",
     )
     (output_dir / "dependency_graph.json").write_text(
@@ -191,7 +192,7 @@ def main(argv: List[str] | None = None) -> int:
     )
     (output_dir / "analysis_report.txt").write_text(report_text, encoding="utf-8")
 
-    logger.info("Wrote service_catalog.json, dependency_graph.json, analysis_report.txt to %s", output_dir)
+    logger.info("Wrote %s, dependency_graph.json, analysis_report.txt to %s", catalog_filename, output_dir)
     logger.info(
         "%d services, %d matched to a flow, %d call-graph edges, %d cmf-only flows, %d unresolved edges",
         catalog["statistics"]["swagger_operations"],
