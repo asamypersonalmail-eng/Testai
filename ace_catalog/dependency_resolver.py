@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .models import (BackendCallResult, DependencyEdge, FlowDefinition, FlowNode,
                       OperationSpec, ServiceResult, TopologyResolution)
@@ -21,6 +21,17 @@ logger = logging.getLogger("ace_catalog.dependency_resolver")
 # Guards against pathological/malformed input causing unbounded recursion.
 # Real ACE call chains are never anywhere close to this deep.
 MAX_TRAVERSAL_DEPTH = 40
+
+# How many "pass-through" nodes (Label, TryCatch, Filter, ...) the request/
+# response construction tracer will hop across before giving up. Real
+# ACE flows rarely chain more than a couple of these between a Compute/
+# Mapping node and the HTTPRequest/SOAPRequest node it feeds.
+MAX_CONSTRUCTION_HOPS = 6
+
+# Node kinds that terminate a construction trace without matching: reaching
+# one of these means we've walked into a different logical step of the
+# flow, not a pass-through node, so the search stops there.
+_CONSTRUCTION_BOUNDARY_KINDS = {"http_request", "soap_request", "subflow_ref", "callable_invoke", "callable_input"}
 
 
 @dataclass
@@ -114,6 +125,7 @@ def resolve_root_flow(operation: OperationSpec, registry: FlowRegistry,
 class DependencyResolver:
     def __init__(self, registry: FlowRegistry):
         self.registry = registry
+        self._wiring_cache: Dict[str, Tuple[Dict[str, FlowNode], Dict[str, List], Dict[str, List]]] = {}
 
     # -- public entry point --------------------------------------------------
     def resolve_service(self, operation: OperationSpec, root_flow_name: Optional[str],
@@ -191,7 +203,7 @@ class DependencyResolver:
                                               downstream_calls, backends, audit, cmf_hits)
 
             elif node.kind in ("http_request", "soap_request"):
-                backends.append(self._resolve_backend(node, flow_name, path, via_nodes, depth))
+                backends.append(self._resolve_backend(node, flow, path, via_nodes, depth))
 
             # kind in ("callable_other", "other"): preserved on the FlowNode
             # inventory already; deliberately not used to build graph edges.
@@ -266,9 +278,85 @@ class DependencyResolver:
                         depth=depth + 1, downstream_calls=downstream_calls, backends=backends,
                         audit=audit, cmf_hits=cmf_hits)
 
+    # -- request/response construction tracing ---------------------------------
+    def _wiring_for(self, flow: FlowDefinition) -> Tuple[Dict[str, FlowNode], Dict[str, List], Dict[str, List]]:
+        """(node_by_id, connections_by_target_node, connections_by_source_node) for `flow`, cached."""
+        cached = self._wiring_cache.get(flow.flow_name)
+        if cached is not None:
+            return cached
+        node_by_id = {n.node_id: n for n in flow.nodes}
+        by_target: Dict[str, List] = {}
+        by_source: Dict[str, List] = {}
+        for conn in flow.connections:
+            by_target.setdefault(conn.target_node_id, []).append(conn)
+            by_source.setdefault(conn.source_node_id, []).append(conn)
+        result = (node_by_id, by_target, by_source)
+        self._wiring_cache[flow.flow_name] = result
+        return result
+
+    def _trace_construction(self, flow: FlowDefinition, start_node_id: str, direction: str) -> Dict[str, Any]:
+        """Walk the flow's wiring from `start_node_id` looking for the nearest
+        Compute (ESQL) or Mapping node — "backward" (into the node feeding
+        this one) to find what builds the outbound request, "forward" (out
+        of this node) to find what processes the inbound response.
+
+        Hops across pass-through nodes (Label, TryCatch, Filter, ...) but
+        stops at another request/subflow/callable node (a different logical
+        step) or once MAX_CONSTRUCTION_HOPS is exceeded. Never guesses: an
+        unresolved trace says exactly why it stopped, and the full hop
+        chain is always recorded for audit.
+        """
+        node_by_id, by_target, by_source = self._wiring_for(flow)
+        index = by_target if direction == "backward" else by_source
+        current_id = start_node_id
+        visited = {start_node_id}
+        hop_chain: List[str] = []
+
+        for _ in range(MAX_CONSTRUCTION_HOPS):
+            conns = index.get(current_id, [])
+            if direction == "forward":
+                # Prefer the success/out path over failure/catch/timeout branches
+                # when a node has more than one outbound terminal wired up.
+                conns = sorted(conns, key=lambda c: 0 if not any(
+                    frag in c.source_terminal.lower() for frag in ("fail", "error", "timeout", "catch")
+                ) else 1)
+            if not conns:
+                return {"status": "unresolved", "reason": "no_further_connection", "hop_chain": hop_chain}
+
+            # Backward: follow the *source* of the connection feeding into
+            # current_id. Forward: follow the *target* of the connection
+            # leading out of current_id.
+            next_id = conns[0].source_node_id if direction == "backward" else conns[0].target_node_id
+            if next_id in visited:
+                return {"status": "unresolved", "reason": "cycle_detected", "hop_chain": hop_chain}
+            visited.add(next_id)
+
+            next_node = node_by_id.get(next_id)
+            if next_node is None:
+                return {"status": "unresolved", "reason": "connection_target_node_not_found", "hop_chain": hop_chain}
+
+            hop_chain.append(next_node.label)
+
+            if next_node.kind in ("compute", "mapping"):
+                return {
+                    "status": "detected",
+                    "node_name": next_node.label,
+                    "node_kind": next_node.kind,
+                    "reference": next_node.construction_reference,
+                    "evidence": next_node.evidence,
+                    "hop_chain": hop_chain,
+                }
+            if next_node.kind in _CONSTRUCTION_BOUNDARY_KINDS:
+                return {"status": "unresolved", "reason": "boundary_node_reached", "hop_chain": hop_chain}
+
+            current_id = next_id  # pass-through node — keep looking
+
+        return {"status": "unresolved", "reason": "max_hops_exceeded", "hop_chain": hop_chain}
+
     # -- backend resolution (rule 8: dynamic vs static URLs) -------------------
-    def _resolve_backend(self, node: FlowNode, source_flow_name: str, path: List[str],
+    def _resolve_backend(self, node: FlowNode, flow: FlowDefinition, path: List[str],
                           via_nodes: List[str], depth: int) -> BackendCallResult:
+        source_flow_name = flow.flow_name
         url = node.url
         host, port, scheme = parse_url(url)
         protocol = node.protocol or (scheme.upper() if scheme else "HTTP")
@@ -302,10 +390,14 @@ class DependencyResolver:
                 confidence = "low"
                 evidence = f"{evidence}+unverified_placeholder_url"
 
+        request_construction = self._trace_construction(flow, node.node_id, direction="backward")
+        response_construction = self._trace_construction(flow, node.node_id, direction="forward")
+
         return BackendCallResult(
             node_name=node.label, protocol=protocol, backend_system=backend_system,
             url=url_out, configured_url=configured_url, host=host, port=port,
             backend_source_flow=source_flow_name, direct=(depth == 0), depth=depth,
             call_chain=list(path), call_path=list(via_nodes), resolution=resolution,
             configuration_source=configuration_source, confidence=confidence, evidence=evidence,
+            request_construction=request_construction, response_construction=response_construction,
         )

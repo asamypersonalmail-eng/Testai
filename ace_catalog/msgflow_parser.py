@@ -27,7 +27,7 @@ import logging
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional
 
-from .models import FlowDefinition, FlowNode
+from .models import FlowConnection, FlowDefinition, FlowNode
 from .utils import basename_of_entry, find_attr_ci, local_name, protocol_for, qualify_flow_name
 
 logger = logging.getLogger("ace_catalog.msgflow_parser")
@@ -91,6 +91,7 @@ def _classify_node(xmi_type: str, attrs: Dict[str, str]) -> Dict[str, object]:
         "kind": "other", "evidence": "unclassified", "signals": [],
         "target_flow_name": None, "target_endpoint_name": None,
         "callable_input_endpoint": None, "url": None, "protocol": None,
+        "construction_reference": None,
     }
 
     # --- 1. Normal SubFlow reference -------------------------------------
@@ -155,6 +156,32 @@ def _classify_node(xmi_type: str, attrs: Dict[str, str]) -> Dict[str, object]:
                        signals=["xmi_type_contains_SOAPRequest"])
         return result
 
+    # --- 5. ESQL Compute node -------------------------------------------------
+    # Used (via wiring, not by this classifier) to find what builds the
+    # request/response message around a backend call. The node's ESQL
+    # module is referenced by its "computeExpression" property, conventionally
+    # of the form "esql://routine/#module_name.Main" — we keep whatever
+    # string is actually present rather than assuming that exact shape.
+    if "compute" in t_lower:
+        ref = find_attr_ci(attrs, "computeexpression", "esqlmodule", "module")
+        result.update(kind="compute", construction_reference=ref,
+                       evidence="esql_compute_expression_reference" if ref else "compute_node_no_module_reference",
+                       signals=["xmi_type_contains_Compute"])
+        return result
+
+    # --- 6. Graphical Data Mapping node ---------------------------------------
+    # Attribute spelling for the referenced .map resource is not verified
+    # against a real BAR (unlike the HTTPRequest URL above) — several
+    # plausible fragments are tried and, if none match, the node is still
+    # classified as "mapping" with construction_reference left None so a
+    # human reviewer knows a mapping exists even without the exact reference.
+    if "mapping" in t_lower and "input" not in t_lower and "reply" not in t_lower:
+        ref = find_attr_ci(attrs, "messagemap", "maplocation", "mapname", "mapfile", "mappingfile")
+        result.update(kind="mapping", construction_reference=ref,
+                       evidence="mapping_file_reference" if ref else "mapping_node_no_file_reference",
+                       signals=["xmi_type_contains_Mapping"])
+        return result
+
     return result
 
 
@@ -206,10 +233,40 @@ class MsgFlowParser:
                 callable_input_endpoint=classification["callable_input_endpoint"],
                 url=classification["url"],
                 protocol=classification["protocol"],
+                construction_reference=classification["construction_reference"],
                 evidence=classification["evidence"],
                 classification_signals=classification["signals"],
             ))
 
-        logger.debug("Parsed %s: %d nodes (%s)", source_file, len(flow.nodes),
-                     ", ".join(sorted({n.kind for n in flow.nodes})) or "none")
+        flow.connections = self._parse_connections(root)
+
+        logger.debug("Parsed %s: %d nodes, %d connections (%s)", source_file, len(flow.nodes),
+                     len(flow.connections), ", ".join(sorted({n.kind for n in flow.nodes})) or "none")
         return flow
+
+    def _parse_connections(self, root: ET.Element) -> List[FlowConnection]:
+        """Parse <connections> wiring edges between node terminals.
+
+        Attribute spelling here is the standard EMF/eflow convention
+        (sourceNode/targetNode/sourceTerminalName/targetTerminalName) but,
+        like the rest of this parser, is matched by case-insensitive
+        fragment rather than assumed exact — a connection missing a
+        recognizable source or target node id is skipped rather than
+        guessed at.
+        """
+        connections: List[FlowConnection] = []
+        for elem in root.iter():
+            if local_name(elem.tag) != "connections":
+                continue
+            attrs = {local_name(k): v for k, v in elem.attrib.items()}
+            source_node = find_attr_ci(attrs, "sourcenode", "startnode")
+            target_node = find_attr_ci(attrs, "targetnode", "endnode")
+            if not source_node or not target_node:
+                continue
+            source_terminal = find_attr_ci(attrs, "sourceterminalname", "sourceterminal") or ""
+            target_terminal = find_attr_ci(attrs, "targetterminalname", "targetterminal") or ""
+            connections.append(FlowConnection(
+                source_node_id=source_node, source_terminal=source_terminal,
+                target_node_id=target_node, target_terminal=target_terminal,
+            ))
+        return connections

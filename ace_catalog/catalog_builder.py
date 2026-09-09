@@ -94,6 +94,12 @@ def _backend_dict(b) -> Dict[str, Any]:
         "resolution": b.resolution,
         "confidence": b.confidence,
         "evidence": b.evidence,
+        # Statically detected via the flow's <connections> wiring: which
+        # Compute/Mapping node builds the request sent to this backend node,
+        # and which one processes its response — a pointer for the reviewer,
+        # not the literal payload (see "request"/"response" below).
+        "request_construction": b.request_construction,
+        "response_construction": b.response_construction,
         # Filled in later by a human reviewer (e.g. via catalog_explorer.html) —
         # static analysis of the flow cannot know the literal payload a
         # backend call sends/receives at runtime.

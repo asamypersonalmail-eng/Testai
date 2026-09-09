@@ -198,6 +198,20 @@ def parameter_rows(params: List[Dict[str, Any]]) -> List[Tuple[str, str, str, st
     return rows
 
 
+def _construction_note(construction: Optional[Dict[str, Any]]) -> str:
+    """Short human-readable note from a request/response construction trace
+    (see ace_catalog.dependency_resolver._trace_construction) — points at
+    the Compute/Mapping node that builds the message, not its literal body.
+    """
+    if not construction:
+        return ""
+    if construction.get("status") == "detected":
+        kind = "ESQL Compute" if construction.get("node_kind") == "compute" else "Mapping"
+        ref = construction.get("reference")
+        return f"Built by {kind} node '{construction.get('node_name', '')}'" + (f" ({ref})" if ref else "")
+    return f"Not statically detected ({construction.get('reason', 'unresolved')})"
+
+
 def backend_rows(backends: List[Dict[str, Any]]) -> List[Tuple[str, str, str, str, str, str, str, str]]:
     rows = []
     for b in backends:
@@ -207,10 +221,12 @@ def backend_rows(backends: List[Dict[str, Any]]) -> List[Tuple[str, str, str, st
             url_text = f"dynamic — configured as {b['configured_url']}"
         else:
             url_text = "unresolved"
+        request_cell = b.get("request") or _construction_note(b.get("request_construction")) or "(not reviewed yet)"
+        response_cell = b.get("response") or _construction_note(b.get("response_construction")) or "(not reviewed yet)"
         rows.append((
             b.get("node_name", ""), b.get("backend_system", ""), b.get("protocol", ""),
             url_text, b.get("resolution", ""), b.get("confidence", ""),
-            b.get("request") or "(not reviewed yet)", b.get("response") or "(not reviewed yet)",
+            request_cell, response_cell,
         ))
     return rows
 

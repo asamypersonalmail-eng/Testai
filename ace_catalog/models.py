@@ -52,7 +52,7 @@ class FlowNode:
 
     # Classification result. One of:
     #   subflow_ref | callable_invoke | callable_input | callable_other |
-    #   http_request | soap_request | other
+    #   http_request | soap_request | compute | mapping | other
     kind: str = "other"
 
     # Populated depending on `kind`:
@@ -61,10 +61,22 @@ class FlowNode:
     callable_input_endpoint: Optional[str] = None  # callable_input
     url: Optional[str] = None                      # http_request / soap_request
     protocol: Optional[str] = None                 # http_request / soap_request
+    construction_reference: Optional[str] = None    # compute (ESQL module) / mapping (.map file)
 
     # Evidence trail — always populated, never left implicit.
     evidence: str = "unclassified"
     classification_signals: List[str] = field(default_factory=list)
+
+
+@dataclass
+class FlowConnection:
+    """One <connections> wiring edge between two nodes' terminals in a
+    single .msgflow/.subflow document (connections never cross flow files)."""
+
+    source_node_id: str
+    source_terminal: str
+    target_node_id: str
+    target_terminal: str
 
 
 @dataclass
@@ -75,6 +87,7 @@ class FlowDefinition:
     source_file: str
     file_type: str  # "msgflow" | "subflow"
     nodes: List[FlowNode] = field(default_factory=list)
+    connections: List[FlowConnection] = field(default_factory=list)
     parse_warnings: List[str] = field(default_factory=list)
 
     def nodes_by_kind(self, kind: str) -> List[FlowNode]:
@@ -101,6 +114,8 @@ class BackendCallResult:
     configuration_source: Optional[str]
     confidence: str  # "high" | "medium" | "low"
     evidence: str
+    request_construction: Optional[Dict[str, Any]] = None
+    response_construction: Optional[Dict[str, Any]] = None
 
 
 @dataclass
