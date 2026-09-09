@@ -94,6 +94,11 @@ def _backend_dict(b) -> Dict[str, Any]:
         "resolution": b.resolution,
         "confidence": b.confidence,
         "evidence": b.evidence,
+        # Filled in later by a human reviewer (e.g. via catalog_explorer.html) —
+        # static analysis of the flow cannot know the literal payload a
+        # backend call sends/receives at runtime.
+        "request": None,
+        "response": None,
     }
     # Only present these keys for dynamically-resolved backends, matching
     # rule 8's example shape (a purely-static backend has no configured_url
@@ -153,6 +158,9 @@ def _service_dict(sr: ServiceResult, registry) -> Dict[str, Any]:
             "inherited_backend_calls": inherited_count,
             "total_backend_calls": direct_count + inherited_count,
         },
+        # Set by a human reviewer (e.g. via catalog_explorer.html), not by
+        # this analysis — a freshly generated catalog is always unreviewed.
+        "reviewed": False,
     }
 
 
