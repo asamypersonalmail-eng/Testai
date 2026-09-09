@@ -447,10 +447,12 @@
     <div class="panel">
       <div class="panel-header">Load Catalogs</div>
       <div class="panel-body">
+        <button class="btn small primary" id="openFolderBtn" style="width:100%;margin-bottom:8px;">📁 Open catalog folder&hellip;</button>
+        <div id="folderStatus" style="font-size:11px;color:var(--accent-2);margin:-4px 0 8px;min-height:14px;"></div>
         <label class="dropzone" id="dropzone">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
-          <div>Drop *_ServiceCatalog.json files here</div>
-          <div class="dz-hint">or click to browse &middot; select any mix of *_ServiceCatalog.json and *_ServiceCatalog_overrides.json &mdash; each is auto-routed and applied</div>
+          <div>...or drop *_ServiceCatalog.json files here</div>
+          <div class="dz-hint">select any mix of *_ServiceCatalog.json and *_ServiceCatalog_overrides.json &mdash; each is auto-routed and applied</div>
           <input type="file" id="fileInput" accept="application/json,.json" multiple>
         </label>
         <div id="catalogList" style="margin-top:10px;"></div>
@@ -717,6 +719,34 @@
   // ======================================================================
   function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
 
+  // Classifies one (fileName, jsonText) pair as a catalog or a review
+  // overlay and stores it. Shared by the classic <input>/drag-drop path
+  // and the File System Access folder-scan path below, so both route
+  // files identically. Throws on a file that's neither.
+  function classifyAndStoreFile(fileName, jsonText, size, fileHandle){
+    var data = JSON.parse(jsonText);
+    // "<bar>_ServiceCatalog_overrides.json" / "<bar>_ServiceCatalog.json" is
+    // ace_service_catalog.py's and this page's own naming convention, so a
+    // matching filename is trusted first — content shape (catalog_review_overlay
+    // marker / services array) is the fallback for files that got renamed.
+    var isOverlayByName = /_ServiceCatalog_overrides\.json$/i.test(fileName);
+    var isCatalogByName = !isOverlayByName && /_ServiceCatalog\.json$/i.test(fileName);
+    if(isOverlayByName || (!isCatalogByName && data && data.catalog_review_overlay === true)){
+      // Re-loading a file with the same name (e.g. re-scanning the folder
+      // right after writing it, or re-dropping a regenerated file) replaces
+      // the existing entry instead of adding a duplicate.
+      var existingOv = reviewOverlays.find(function(o){ return o.fileName === fileName; });
+      if(existingOv){ existingOv.data = data; existingOv.fileHandle = fileHandle || existingOv.fileHandle; }
+      else reviewOverlays.push({ id: uid(), fileName: fileName, data: data, fileHandle: fileHandle || null });
+    }else if(isCatalogByName || (data && Array.isArray(data.services))){
+      var existingCat = catalogs.find(function(c){ return c.fileName === fileName; });
+      if(existingCat){ existingCat.data = data; existingCat.size = size; }
+      else catalogs.push({ id: uid(), fileName: fileName, size: size, data: data, visible: true });
+    }else{
+      throw new Error("File is neither a service catalog (\"<bar>_ServiceCatalog.json\") nor a review overlay (\"<bar>_ServiceCatalog_overrides.json\")");
+    }
+  }
+
   function handleFiles(fileList){
     var files = Array.prototype.slice.call(fileList);
     var pending = files.length;
@@ -725,20 +755,7 @@
       var reader = new FileReader();
       reader.onload = function(e){
         try{
-          var data = JSON.parse(e.target.result);
-          // "<bar>_ServiceCatalog_overrides.json" / "<bar>_ServiceCatalog.json" is
-          // ace_service_catalog.py's and this page's own naming convention, so a
-          // matching filename is trusted first — content shape (catalog_review_overlay
-          // marker / services array) is the fallback for files that got renamed.
-          var isOverlayByName = /_ServiceCatalog_overrides\.json$/i.test(file.name);
-          var isCatalogByName = !isOverlayByName && /_ServiceCatalog\.json$/i.test(file.name);
-          if(isOverlayByName || (!isCatalogByName && data && data.catalog_review_overlay === true)){
-            reviewOverlays.push({ id: uid(), fileName: file.name, data: data });
-          }else if(isCatalogByName || (data && Array.isArray(data.services))){
-            catalogs.push({ id: uid(), fileName: file.name, size: file.size, data: data, visible: true });
-          }else{
-            throw new Error("File is neither a service catalog (\"<bar>_ServiceCatalog.json\") nor a review overlay (\"<bar>_ServiceCatalog_overrides.json\")");
-          }
+          classifyAndStoreFile(file.name, e.target.result, file.size, null);
         }catch(err){
           alert("Could not load \"" + file.name + "\":\n" + err.message);
         }finally{
@@ -755,6 +772,87 @@
     });
   }
 
+  // ======================================================================
+  // Folder mode (Chrome/Edge File System Access API) — grants access to a
+  // whole folder once, so every *_ServiceCatalog.json and
+  // *_ServiceCatalog_overrides.json inside it loads automatically (no
+  // separate step to pair a catalog with its overrides file), and
+  // "Export review overlay" writes straight back into that same folder
+  // with no download dialog. Not available in Firefox/Safari — the
+  // classic drag-and-drop / file-picker path above still works there,
+  // exporting to the browser's normal Downloads location instead.
+  // ======================================================================
+  var currentDirHandle = null;
+  var dirModeSupported = typeof window.showDirectoryPicker === "function";
+
+  async function openCatalogFolder(){
+    if(!dirModeSupported){
+      alert("Folder access needs Chrome or Edge. In other browsers, drag and drop the *_ServiceCatalog.json and *_ServiceCatalog_overrides.json files instead.");
+      return;
+    }
+    var handle;
+    try{
+      handle = await window.showDirectoryPicker();
+    }catch(err){
+      return; // user cancelled the picker
+    }
+    currentDirHandle = handle;
+    await scanCurrentFolder();
+  }
+
+  async function scanCurrentFolder(){
+    if(!currentDirHandle) return;
+    var loadErrors = [];
+    for await (const [name, entryHandle] of currentDirHandle.entries()){
+      if(entryHandle.kind !== "file" || !/\.json$/i.test(name)) continue;
+      if(!/_ServiceCatalog(_overrides)?\.json$/i.test(name)) continue;
+      try{
+        var file = await entryHandle.getFile();
+        var text = await file.text();
+        classifyAndStoreFile(name, text, file.size, entryHandle);
+      }catch(err){
+        loadErrors.push(name + ": " + err.message);
+      }
+    }
+    persist();
+    rebuild();
+    renderFolderStatus();
+    if(loadErrors.length) alert("Some files in the folder could not be loaded:\n" + loadErrors.join("\n"));
+  }
+
+  function renderFolderStatus(){
+    var el = document.getElementById("folderStatus");
+    if(!el) return;
+    el.textContent = currentDirHandle ? ("📁 " + currentDirHandle.name + " — exports save here automatically") : "";
+  }
+
+  // Writes `text` as `fileName` directly into the open folder (no dialog).
+  // Returns true on success, false if folder mode isn't active/available
+  // so the caller should fall back to a normal browser download.
+  async function saveIntoCurrentFolder(fileName, text){
+    if(!currentDirHandle) return false;
+    try{
+      var fileHandle = await currentDirHandle.getFileHandle(fileName, { create: true });
+      var writable = await fileHandle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      return true;
+    }catch(err){
+      alert("Could not save \"" + fileName + "\" into " + currentDirHandle.name + ":\n" + err.message + "\n\nFalling back to a normal download.");
+      return false;
+    }
+  }
+
+  function downloadBlob(fileName, text){
+    var blob = new Blob([text], {type:"application/json"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   function removeCatalog(id){
     catalogs = catalogs.filter(function(c){ return c.id !== id; });
     persist();
@@ -769,9 +867,11 @@
     if(!confirm("Remove all loaded catalogs and review overlays?")) return;
     catalogs = [];
     reviewOverlays = [];
+    currentDirHandle = null;
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(OVERLAY_STORAGE_KEY);
     rebuild();
+    renderFolderStatus();
   }
 
   // ======================================================================
@@ -1381,32 +1481,33 @@
     viewServiceInGraph(currentDrawerKey);
   });
 
-  document.getElementById("exportBtn").addEventListener("click", function(){
+  document.getElementById("exportBtn").addEventListener("click", async function(){
     var merged = {
       catalog_name: "Merged Catalog",
       merged_from: catalogs.map(function(c){ return c.fileName; }),
       generated_at: new Date().toISOString(),
       services: services.map(function(s){ return s.raw; }),
     };
-    var blob = new Blob([JSON.stringify(merged, null, 2)], {type:"application/json"});
-    var a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "merged_service_catalog.json";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    var fileName = "merged_service_catalog.json";
+    var text = JSON.stringify(merged, null, 2);
+    if(!(await saveIntoCurrentFolder(fileName, text))) downloadBlob(fileName, text);
   });
 
-  document.getElementById("exportOverlayBtn").addEventListener("click", function(){
+  document.getElementById("exportOverlayBtn").addEventListener("click", async function(){
     var overlay = buildReviewOverlay();
-    var blob = new Blob([JSON.stringify(overlay, null, 2)], {type:"application/json"});
-    var a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = deriveBarStem() + "_ServiceCatalog_overrides.json";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    var fileName = deriveBarStem() + "_ServiceCatalog_overrides.json";
+    var text = JSON.stringify(overlay, null, 2);
+    if(await saveIntoCurrentFolder(fileName, text)){
+      await scanCurrentFolder(); // pick the just-written overrides file back up as a loaded overlay
+    }else{
+      downloadBlob(fileName, text);
+    }
   });
+
+  document.getElementById("openFolderBtn").addEventListener("click", openCatalogFolder);
+  if(!dirModeSupported){
+    document.getElementById("openFolderBtn").title = "Needs Chrome or Edge — use drag-and-drop below in this browser";
+  }
 
   document.getElementById("clearAllBtn").addEventListener("click", clearAll);
 
