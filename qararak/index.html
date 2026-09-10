@@ -748,6 +748,33 @@
 @media(max-width:700px){.v8-free-hero-card,.v8-free-pricing-card{grid-template-columns:1fr}.v8-free-hero-card button,.v8-free-pricing-action .btn-primary{width:100%;justify-content:center}.v8-free-pricing-action{text-align:start;min-width:0}.v8-free-pricing-action>strong{font-size:28px}}
 </style>
 
+<style id="ai-explanation-css">
+.ai-key-btn{border:1px solid rgba(201,166,103,.55);background:rgba(201,166,103,.08);color:var(--green);border-radius:999px;padding:8px 12px;font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.ai-key-btn:hover{background:rgba(201,166,103,.16)}
+.ai-key-dot{width:7px;height:7px;border-radius:50%;background:#b7472a;display:inline-block}
+.ai-key-dot.set{background:#2f7d4f}
+.ai-modal-overlay{position:fixed;inset:0;background:rgba(20,26,20,.55);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px}
+.ai-modal-overlay[hidden]{display:none}
+.ai-modal{background:#fff;border-radius:18px;max-width:440px;width:100%;padding:24px;box-shadow:0 24px 60px rgba(0,0,0,.25)}
+.ai-modal h3{margin:0 0 8px;color:var(--green);font-size:17px}
+.ai-modal p{margin:0 0 14px;font-size:12.5px;color:var(--muted);line-height:1.65}
+.ai-modal input[type="password"],.ai-modal input[type="text"]{width:100%;padding:11px 12px;border:1px solid var(--line,#e2dbc8);border-radius:10px;font-size:13px;margin-bottom:12px}
+.ai-modal-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.ai-modal-actions button{border:0;border-radius:999px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer}
+.ai-modal-save{background:var(--green);color:#fff}
+.ai-modal-clear{background:rgba(183,71,42,.1);color:#b7472a}
+.ai-modal-close{background:#f1efe6;color:var(--muted)}
+.ai-modal-status{font-size:11.5px;color:var(--muted);margin-bottom:12px}
+.ai-explain-box{margin-top:14px;padding:14px 16px;border-radius:14px;border:1px solid rgba(201,166,103,.4);background:rgba(201,166,103,.06)}
+.ai-explain-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.ai-explain-tag{font-size:10.5px;font-weight:900;letter-spacing:.03em;color:#8b6d31;background:rgba(201,166,103,.18);padding:3px 9px;border-radius:999px}
+.ai-explain-btn{border:1px solid var(--green);background:#fff;color:var(--green);border-radius:999px;padding:7px 13px;font-size:11.5px;font-weight:700;cursor:pointer}
+.ai-explain-btn:hover{background:rgba(23,63,44,.06)}
+.ai-explain-btn:disabled{opacity:.6;cursor:default}
+.ai-explain-text{font-size:13px;line-height:1.75;color:var(--ink,#20291f);white-space:pre-wrap}
+.ai-explain-note{font-size:11px;color:var(--muted);margin-top:8px}
+</style>
+
 </head>
 <body>
 
@@ -773,10 +800,25 @@
   </div>
 
   <div class="nav-actions">
+    <button class="ai-key-btn" type="button" onclick="openAISettingsModal()"><span class="ai-key-dot" id="aiKeyDot"></span><span data-i18n="aiKeyNavBtn">مفتاح الذكاء الاصطناعي</span></button>
     <button class="lang-toggle" onclick="toggleLanguage()" id="langToggleBtn" title="Switch language">EN</button>
     <button class="cta" onclick="openIntentChooser();closeNavMenu()" data-i18n="navCta">ابدأ التحليل</button>
   </div>
 </nav>
+
+<div class="ai-modal-overlay" id="aiSettingsModal" hidden>
+  <div class="ai-modal" role="dialog" aria-modal="true" aria-labelledby="aiModalTitle">
+    <h3 id="aiModalTitle" data-i18n="aiSettingsTitle">مفتاح Claude API</h3>
+    <p data-i18n="aiSettingsDesc">لتفعيل الشرح بالذكاء الاصطناعي لكل توصية، أدخل مفتاح Claude API الخاص بك. يُحفظ المفتاح في متصفحك فقط (Local Storage) ولا يُرسل لأي مكان غير Anthropic مباشرة.</p>
+    <div class="ai-modal-status" id="aiModalStatus"></div>
+    <input type="password" id="aiKeyInput" data-i18n-ph="aiKeyPlaceholder" placeholder="sk-ant-..." autocomplete="off" />
+    <div class="ai-modal-actions">
+      <button class="ai-modal-close" type="button" onclick="closeAISettingsModal()" data-i18n="aiKeyClose">إغلاق</button>
+      <button class="ai-modal-clear" type="button" onclick="clearAIKeyAction()" data-i18n="aiKeyClear">مسح المفتاح</button>
+      <button class="ai-modal-save" type="button" onclick="saveAIKeyAction()" data-i18n="aiKeySave">حفظ</button>
+    </div>
+  </div>
+</div>
 
 <main>
 
@@ -1091,7 +1133,16 @@
       <div id="smartAccessBanner" class="smart-paid-banner">✓ <span data-i18n="fullReportUnlocked">تم فتح التقرير الكامل</span> <b id="smartPaidRef"></b></div>
       <div class="card"><div class="smart-card-title"><span>01</span><div><h3 data-i18n="detailedMetrics">المؤشرات التفصيلية</h3><p data-i18n="detailedMetricsSub">المؤشرات المالية والمكانية الملائمة لنوع القرار الذي اخترته.</p></div></div><div id="smartDetailedMetrics" class="grid-3"></div></div>
       <div class="smart-preview-grid"><section class="card smart-preview-card strengths"><h3>✓ <span data-i18n="allStrengths">كل المميزات</span></h3><ul id="smartFullStrengths" class="insight-list"></ul></section><section class="card smart-preview-card risks"><h3>! <span data-i18n="allRisks">كل المخاطر</span></h3><ul id="smartFullRisks" class="insight-list"></ul></section></div>
-      <div class="card"><div class="smart-card-title"><span>02</span><div><h3 data-i18n="whyRecommendation">لماذا ظهرت هذه التوصية؟</h3><p data-i18n="whyRecommendationSub">تفسير القرار وفقًا للمدخلات والـGIS indicators المتاحة.</p></div></div><div id="smartRationale" class="smart-rationale"></div><div id="smartSpatialBreakdown"></div></div>
+      <div class="card"><div class="smart-card-title"><span>02</span><div><h3 data-i18n="whyRecommendation">لماذا ظهرت هذه التوصية؟</h3><p data-i18n="whyRecommendationSub">تفسير القرار وفقًا للمدخلات والـGIS indicators المتاحة.</p></div></div><div id="smartRationale" class="smart-rationale"></div>
+        <div class="ai-explain-box">
+          <div class="ai-explain-head">
+            <span class="ai-explain-tag">✨ <span data-i18n="aiGeneratedTag">شرح بالذكاء الاصطناعي</span></span>
+            <button class="ai-explain-btn" type="button" id="smartAIExplainBtn" onclick="requestSmartAIExplanation()" data-i18n="aiGenerateBtn">إنشاء شرح بالذكاء الاصطناعي</button>
+          </div>
+          <div class="ai-explain-text" id="smartAIExplainText"></div>
+          <div class="ai-explain-note" id="smartAIExplainNote" data-i18n="aiDisclaimer">شرح تكميلي من Claude API بناءً على الأرقام المعروضة فقط — لا يُنشئ بيانات جديدة، وقد يحتوي أخطاء.</div>
+        </div>
+        <div id="smartSpatialBreakdown"></div></div>
     </section>
 
     <section id="smartPaywall" class="card smart-paywall">
@@ -1608,6 +1659,15 @@ const T = {
     mapErrorDetail: "تعذّر تحميل الخريطة (تحتاج اتصالًا بالإنترنت). الإحداثيات المحفوظة:",
     latLbl: "خط العرض (Latitude)", lngLbl: "خط الطول (Longitude)",
     propertyHash: "عقار #", pinLocation: "الموقع",
+    aiKeyNavBtn: "مفتاح الذكاء الاصطناعي", aiSettingsTitle: "مفتاح Claude API",
+    aiSettingsDesc: "لتفعيل الشرح بالذكاء الاصطناعي لكل توصية، أدخل مفتاح Claude API الخاص بك. يُحفظ المفتاح في متصفحك فقط (Local Storage) ولا يُرسل لأي مكان غير Anthropic مباشرة.",
+    aiKeyPlaceholder: "sk-ant-...", aiKeyClose: "إغلاق", aiKeyClear: "مسح المفتاح", aiKeySave: "حفظ",
+    aiKeyStatusSet: "✓ يوجد مفتاح محفوظ على هذا الجهاز.", aiKeyStatusUnset: "لا يوجد مفتاح محفوظ حاليًا.",
+    aiGeneratedTag: "شرح بالذكاء الاصطناعي", aiGenerateBtn: "إنشاء شرح بالذكاء الاصطناعي", aiRegenerateBtn: "إعادة الإنشاء",
+    aiDisclaimer: "شرح تكميلي من Claude API بناءً على الأرقام المعروضة فقط — لا يُنشئ بيانات جديدة، وقد يحتوي أخطاء.",
+    aiLoading: "جاري إنشاء الشرح بالذكاء الاصطناعي...",
+    aiErrorNoKey: "لم يتم إدخال مفتاح Claude API بعد. اضغط \"مفتاح الذكاء الاصطناعي\" أعلى الصفحة لإضافته.",
+    aiErrorGeneric: "تعذّر إنشاء الشرح حاليًا. تأكد من صحة المفتاح والاتصال بالإنترنت وحاول مرة أخرى.",
   },
   en: {
     brand: "Qararak",
@@ -1744,6 +1804,15 @@ const T = {
     mapErrorDetail: "Could not load the map (internet connection required). Saved coordinates:",
     latLbl: "Latitude", lngLbl: "Longitude",
     propertyHash: "Property #", pinLocation: "Location",
+    aiKeyNavBtn: "AI Key", aiSettingsTitle: "Claude API Key",
+    aiSettingsDesc: "To enable an AI-generated explanation for each recommendation, enter your Claude API key. It's stored only in your browser (Local Storage) and is sent only to Anthropic directly.",
+    aiKeyPlaceholder: "sk-ant-...", aiKeyClose: "Close", aiKeyClear: "Clear key", aiKeySave: "Save",
+    aiKeyStatusSet: "✓ A key is saved on this device.", aiKeyStatusUnset: "No key saved yet.",
+    aiGeneratedTag: "AI-generated explanation", aiGenerateBtn: "Generate AI Explanation", aiRegenerateBtn: "Regenerate",
+    aiDisclaimer: "Supplementary explanation from the Claude API, based only on the figures shown above — it does not invent new data, and may contain errors.",
+    aiLoading: "Generating AI explanation...",
+    aiErrorNoKey: "No Claude API key set yet. Click \"AI Key\" at the top of the page to add one.",
+    aiErrorGeneric: "Could not generate the explanation right now. Check the key and your internet connection, then try again.",
   }
 };
 
@@ -3337,7 +3406,128 @@ function renderSmartComparePreview(rec){const e=document.getElementById('smartCo
 function comparisonTable(cands,preview=false){return `<table class="smart-comparison-table"><thead><tr><th>${smartText('الموقع','Site')}</th><th>Score</th><th>Location</th><th>${smartText('الخدمات','POIs')}</th></tr></thead><tbody>${cands.map((x,i)=>`<tr class="${i===0?'best':''}"><td><strong>Site ${x.label}</strong>${i===0?' ✓':''}</td><td>${x.score}/100</td><td>${x.loc.overallScore}/100</td><td>${x.services}</td></tr>`).join('')}</tbody></table>`}
 function renderSmartScopeFactsResult(rec){const a=rec.analysis,f=[];f.push(`Buffer: ${rec.buffer.toLocaleString()} m`);if(rec.intent==='compare')f.push(`${smartText('المواقع','Sites')}: ${rec.comparePoints.length}`);else if(rec.geometry){const ar=geometryArea(rec.geometry);if(ar)f.push(`${smartText('المساحة','Area')}: ${ar.toLocaleString()} m²`)}f.push(`${smartText('POIs داخل النطاق','POIs in scope')}: ${a.services??0}`);document.getElementById('smartResultScopeFacts').innerHTML=f.map(x=>`<span>${x}</span>`).join('')}
 function renderSmartResultMap(rec){if(!leafletAvailable())return;if(smartResultMap){try{smartResultMap.remove()}catch(e){}}smartResultMap=L.map('smartResultMap').setView([30.02,31.45],12);L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&hl=ar&x={x}&y={y}&z={z}',{attribution:'&copy; Google',maxZoom:20,subdomains:['0','1','2','3']}).addTo(smartResultMap);POIS.forEach(p=>addPoiMarker(smartResultMap,p));const layers=[];if(rec.intent==='compare'){rec.comparePoints.forEach(p=>{layers.push(L.marker([p.lat,p.lng]).addTo(smartResultMap).bindTooltip(`Site ${p.label}`,{permanent:true,direction:'top'}));layers.push(L.circle([p.lat,p.lng],{radius:rec.buffer,color:'#173f2c',weight:1,fillOpacity:.05}).addTo(smartResultMap))})}else if(rec.geometry){const g=L.geoJSON(rec.geometry,{pointToLayer:(f,ll)=>L.marker(ll),style:{color:'#173f2c',weight:3,fillColor:'#c9a667',fillOpacity:.16}}).addTo(smartResultMap);layers.push(g);try{if(typeof turf==='undefined'||!turf.buffer)throw new Error('turf unavailable');const b=turf.buffer(rec.geometry,rec.buffer/1000,{units:'kilometers'});layers.push(L.geoJSON(b,{style:{color:'#2f7d4f',dashArray:'5 5',weight:1,fillOpacity:.05}}).addTo(smartResultMap))}catch(e){}}if(layers.length){try{const fg=L.featureGroup(layers);smartResultMap.fitBounds(fg.getBounds(),{padding:[25,25]})}catch(e){}}setTimeout(()=>smartResultMap.invalidateSize(),50)}
-function showSmartFullReport(rec){document.getElementById('smartFullReport').style.display='block';document.getElementById('smartPaywall').style.display='none';document.getElementById('smartPaidRef').textContent=rec.paymentReference?`· ${rec.paymentReference}`:'';document.getElementById('smartDetailedMetrics').innerHTML=smartMetrics(rec.data,rec.analysis).map(([l,v])=>`<div class="stat"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`).join('');document.getElementById('smartFullStrengths').innerHTML=rec.strengths.map(x=>`<li>${x}</li>`).join('');document.getElementById('smartFullRisks').innerHTML=rec.risks.map(x=>`<li>${x}</li>`).join('');document.getElementById('smartRationale').textContent=rationaleText(rec.data,rec.analysis);document.getElementById('smartSpatialBreakdown').innerHTML=rec.intent==='compare'?comparisonTable(rec.analysis.candidates):renderSmartBreakdownHtml(rec.analysis.loc)}
+function showSmartFullReport(rec){document.getElementById('smartFullReport').style.display='block';document.getElementById('smartPaywall').style.display='none';document.getElementById('smartPaidRef').textContent=rec.paymentReference?`· ${rec.paymentReference}`:'';document.getElementById('smartDetailedMetrics').innerHTML=smartMetrics(rec.data,rec.analysis).map(([l,v])=>`<div class="stat"><div class="stat-label">${l}</div><div class="stat-value">${v}</div></div>`).join('');document.getElementById('smartFullStrengths').innerHTML=rec.strengths.map(x=>`<li>${x}</li>`).join('');document.getElementById('smartFullRisks').innerHTML=rec.risks.map(x=>`<li>${x}</li>`).join('');document.getElementById('smartRationale').textContent=rationaleText(rec.data,rec.analysis);document.getElementById('smartSpatialBreakdown').innerHTML=rec.intent==='compare'?comparisonTable(rec.analysis.candidates):renderSmartBreakdownHtml(rec.analysis.loc);renderSmartAIExplanationUI(rec)}
+
+// ---- AI-generated recommendation explanation (Claude API, bring-your-own-key) ----
+const QARARAK_AI_KEY_STORAGE='qararak_claude_api_key';
+function getClaudeApiKey(){try{return localStorage.getItem(QARARAK_AI_KEY_STORAGE)||''}catch(e){return ''}}
+function setClaudeApiKey(key){try{if(key)localStorage.setItem(QARARAK_AI_KEY_STORAGE,key);else localStorage.removeItem(QARARAK_AI_KEY_STORAGE)}catch(e){}}
+
+function refreshAIKeyStatusUI(){
+  const has=!!getClaudeApiKey();
+  const dot=document.getElementById('aiKeyDot');
+  if(dot)dot.classList.toggle('set',has);
+  const status=document.getElementById('aiModalStatus');
+  if(status)status.textContent=has?t('aiKeyStatusSet'):t('aiKeyStatusUnset');
+}
+function openAISettingsModal(){
+  const modal=document.getElementById('aiSettingsModal');
+  const input=document.getElementById('aiKeyInput');
+  if(input)input.value=getClaudeApiKey();
+  refreshAIKeyStatusUI();
+  if(modal)modal.hidden=false;
+}
+function closeAISettingsModal(){const modal=document.getElementById('aiSettingsModal');if(modal)modal.hidden=true}
+function saveAIKeyAction(){
+  const input=document.getElementById('aiKeyInput');
+  setClaudeApiKey((input?.value||'').trim());
+  refreshAIKeyStatusUI();
+}
+function clearAIKeyAction(){
+  setClaudeApiKey('');
+  const input=document.getElementById('aiKeyInput');
+  if(input)input.value='';
+  refreshAIKeyStatusUI();
+}
+
+async function callClaudeForExplanation(promptText){
+  const key=getClaudeApiKey();
+  if(!key)return{ok:false,reason:'no_key'};
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'content-type':'application/json',
+        'x-api-key':key,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true',
+      },
+      body:JSON.stringify({
+        model:'claude-opus-5',
+        max_tokens:400,
+        messages:[{role:'user',content:promptText}],
+      }),
+    });
+    if(!res.ok)return{ok:false,reason:'http_error',status:res.status};
+    const data=await res.json();
+    const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+    if(!text)return{ok:false,reason:'empty'};
+    return{ok:true,text};
+  }catch(e){
+    return{ok:false,reason:'network'};
+  }
+}
+
+function buildSmartAIExplanationPrompt(rec){
+  const d=rec.data,a=rec.analysis,c=rec.cfg;
+  const lang=currentLang==='ar'?'Arabic':'English';
+  const lines=[];
+  lines.push(`You are a real-estate decision assistant for the Qararak app. Write a short, clear explanation (3-5 sentences, plain language, no headings, no markdown) in ${lang} for a ${c.audience==='business'?'property developer/business user':'individual property buyer or owner'}, explaining why the tool arrived at this recommendation. Reference only the figures given below — never invent numbers, comparable prices, or facts not listed here.`);
+  lines.push(`Decision type: ${c.ar} / ${c.en}`);
+  lines.push(`Recommendation: ${a.recommendation.label} — ${a.recommendation.short}`);
+  lines.push(`Decision score: ${a.score}/100`);
+  lines.push(`Confidence score: ${a.confidence}%`);
+  if(a.services!=null)lines.push(`Points of interest inside the analyzed buffer/scope: ${a.services}`);
+  if(rec.buffer)lines.push(`Buffer radius analyzed: ${rec.buffer} meters`);
+  if(d.district)lines.push(`District: ${districtLabel(d.district)}`);
+  if(d.area)lines.push(`Area: ${d.area} sqm`);
+  if(d.price)lines.push(`Asking price: ${d.price} EGP`);
+  if(d.currentValue)lines.push(`Current market value: ${d.currentValue} EGP`);
+  if(rec.strengths&&rec.strengths.length)lines.push(`Identified strengths: ${rec.strengths.join('; ')}`);
+  if(rec.risks&&rec.risks.length)lines.push(`Identified risks: ${rec.risks.join('; ')}`);
+  return lines.join('\n');
+}
+
+function renderSmartAIExplanationUI(rec){
+  const btn=document.getElementById('smartAIExplainBtn');
+  const box=document.getElementById('smartAIExplainText');
+  if(!btn||!box)return;
+  if(rec.aiExplanation){
+    box.textContent=rec.aiExplanation;
+    btn.textContent=t('aiRegenerateBtn');
+    btn.disabled=false;
+  }else if(rec.aiExplanationError){
+    box.textContent=rec.aiExplanationError;
+    btn.textContent=t('aiGenerateBtn');
+    btn.disabled=false;
+  }else{
+    box.textContent='';
+    btn.textContent=t('aiGenerateBtn');
+    btn.disabled=false;
+  }
+}
+
+async function requestSmartAIExplanation(){
+  const rec=smartCurrentRecord;
+  if(!rec)return;
+  const btn=document.getElementById('smartAIExplainBtn');
+  const box=document.getElementById('smartAIExplainText');
+  if(!getClaudeApiKey()){
+    if(box)box.textContent=t('aiErrorNoKey');
+    return;
+  }
+  if(btn)btn.disabled=true;
+  if(box)box.textContent=t('aiLoading');
+  const result=await callClaudeForExplanation(buildSmartAIExplanationPrompt(rec));
+  if(result.ok){
+    rec.aiExplanation=result.text;
+    rec.aiExplanationError=null;
+  }else{
+    rec.aiExplanation=null;
+    rec.aiExplanationError=t('aiErrorGeneric');
+  }
+  renderSmartAIExplanationUI(rec);
+}
 function renderSmartBreakdownHtml(loc){if(!loc?.breakdown)return'';return `<h4 style="margin:18px 0 8px">${smartText('تفاصيل جاذبية الموقع','Location Attractiveness Breakdown')}</h4>`+Object.entries(loc.breakdown).map(([cat,x])=>{const cfg=CATEGORY_CONFIG[cat];return `<div class="breakdown-row"><div>${t(cfg.key)}</div><div>${x.score==null?`<span class="muted">${t('noData')}</span>`:`<div class="bar-bg"><div class="bar-fill" style="width:${x.score}%;background:${cfg.color}"></div></div><span class="muted">${x.score} · ${x.nearest} (${x.distanceKm} km)</span>`}</div></div>`}).join('')}
 
 // My Analyses: include V7 smart records as well as any legacy analyses.
@@ -3390,8 +3580,9 @@ const v7BuildSmartAnalysisFormV8=buildSmartAnalysisForm;buildSmartAnalysisForm=f
 runSmartAnalysis=function(){const err=document.getElementById('smartFormError');err.textContent='';const d=smartInputData(),validation=requiredSmartInputs(d);if(validation){err.textContent=validation;return}const isFirstFree=!qararakHasUsedFree(d.phone),a=buildSmartAnalysis(d),sr=smartStrengthsRisks(d,a);const rec={id:'S'+(smartRecords.length+1),intent:currentSmartIntent,cfg:smartCfg(),data:d,analysis:a,strengths:sr.strengths,risks:sr.risks,geometry:smartGeometry?JSON.parse(JSON.stringify(smartGeometry)):null,comparePoints:smartComparePoints.map(x=>({...x})),buffer:Number(document.getElementById('smartBuffer')?.value||1000),paid:false,freeAccess:isFirstFree,accessType:isFirstFree?'free_trial':'preview',createdAt:new Date().toISOString()};if(isFirstFree){qararakConsumeFree(d.phone);rec.freeTrialConsumedAt=new Date().toISOString()}smartRecords.push(rec);smartCurrentRecord=rec;window.__smartCurrentRecord=rec;renderSmartResult(rec);showView('smart-result');setTimeout(()=>renderSmartResultMap(rec),100)};
 const v7RenderSmartResultV8=renderSmartResult;renderSmartResult=function(rec){v7RenderSmartResultV8(rec);const kicker=document.getElementById('smartResultKicker'),banner=document.getElementById('smartAccessBanner');if(rec.freeAccess){showSmartFullReport(rec);if(kicker){kicker.textContent=smartText('Qararak · أول تحليل كامل مجاني','Qararak · First Full Analysis Free');kicker.classList.add('v8-free-result-kicker')}if(banner){banner.classList.add('free-access');banner.innerHTML=`<span>${t('freeFullReport')}</span><b>${smartText('بدون دفع','No payment')}</b>`}const paywall=document.getElementById('smartPaywall');if(paywall)paywall.style.display='none'}else{if(kicker)kicker.classList.remove('v8-free-result-kicker');if(banner)banner.classList.remove('free-access')}};
 const v7RenderPropertyListV8=window.renderPropertyList;window.renderPropertyList=function(){v7RenderPropertyListV8();document.querySelectorAll('#propertyListContainer .property-card').forEach(card=>{if(card.textContent.includes('أول تحليل مجاني')||card.textContent.includes('First analysis free'))card.classList.add('v8-free-history-card')})};
-const v7ToggleLanguageV8=window.toggleLanguage;window.toggleLanguage=function(){v7ToggleLanguageV8();refreshTrialStatus()};
+const v7ToggleLanguageV8=window.toggleLanguage;window.toggleLanguage=function(){v7ToggleLanguageV8();refreshTrialStatus();refreshAIKeyStatusUI()};
 setTimeout(refreshTrialStatus,0);
+setTimeout(refreshAIKeyStatusUI,0);
 </script>
 
 </body>
