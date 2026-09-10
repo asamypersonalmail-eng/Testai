@@ -733,6 +733,33 @@
   }
 </style>
 
+<style id="ai-explanation-css">
+.ai-key-btn{border:1px solid rgba(201,166,103,.55);background:rgba(201,166,103,.08);color:var(--green);border-radius:999px;padding:8px 12px;font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.ai-key-btn:hover{background:rgba(201,166,103,.16)}
+.ai-key-dot{width:7px;height:7px;border-radius:50%;background:#b7472a;display:inline-block}
+.ai-key-dot.set{background:#2f7d4f}
+.ai-modal-overlay{position:fixed;inset:0;background:rgba(20,26,20,.55);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px}
+.ai-modal-overlay[hidden]{display:none}
+.ai-modal{background:var(--panel,#fff);border-radius:18px;max-width:440px;width:100%;padding:24px;box-shadow:0 24px 60px rgba(0,0,0,.25)}
+.ai-modal h3{margin:0 0 8px;color:var(--green);font-size:17px}
+.ai-modal p{margin:0 0 14px;font-size:12.5px;color:var(--muted);line-height:1.65}
+.ai-modal input[type="password"]{width:100%;padding:11px 12px;border:1px solid var(--line,#e2dbc8);border-radius:10px;font-size:13px;margin-bottom:12px}
+.ai-modal-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.ai-modal-actions button{border:0;border-radius:999px;padding:9px 16px;font-size:12.5px;font-weight:700;cursor:pointer}
+.ai-modal-save{background:var(--green);color:#fff}
+.ai-modal-clear{background:rgba(183,71,42,.1);color:#b7472a}
+.ai-modal-close{background:#f1efe6;color:var(--muted)}
+.ai-modal-status{font-size:11.5px;color:var(--muted);margin-bottom:12px}
+.ai-explain-box{margin-top:14px;padding:14px 16px;border-radius:14px;border:1px solid rgba(201,166,103,.4);background:rgba(201,166,103,.06)}
+.ai-explain-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.ai-explain-tag{font-size:10.5px;font-weight:900;letter-spacing:.03em;color:#8b6d31;background:rgba(201,166,103,.18);padding:3px 9px;border-radius:999px}
+.ai-explain-btn{border:1px solid var(--green);background:var(--panel,#fff);color:var(--green);border-radius:999px;padding:7px 13px;font-size:11.5px;font-weight:700;cursor:pointer}
+.ai-explain-btn:hover{background:rgba(23,63,44,.06)}
+.ai-explain-btn:disabled{opacity:.6;cursor:default}
+.ai-explain-text{font-size:13px;line-height:1.75;color:var(--ink,#20291f);white-space:pre-wrap}
+.ai-explain-note{font-size:11px;color:var(--muted);margin-top:8px}
+</style>
+
 </head>
 <body>
 
@@ -756,10 +783,25 @@
   </div>
 
   <div class="nav-actions">
+    <button class="ai-key-btn" type="button" onclick="openAISettingsModal()"><span class="ai-key-dot" id="aiKeyDot"></span><span data-i18n="aiKeyNavBtn">مفتاح الذكاء الاصطناعي</span></button>
     <button class="lang-toggle" onclick="toggleLanguage()" id="langToggleBtn" title="Switch language">EN</button>
     <button class="cta" onclick="showView('new');closeNavMenu()" data-i18n="navCta">+ تقييم شقة للشراء</button>
   </div>
 </nav>
+
+<div class="ai-modal-overlay" id="aiSettingsModal" hidden>
+  <div class="ai-modal" role="dialog" aria-modal="true" aria-labelledby="aiModalTitle">
+    <h3 id="aiModalTitle" data-i18n="aiSettingsTitle">مفتاح Claude API</h3>
+    <p data-i18n="aiSettingsDesc">لتفعيل الشرح بالذكاء الاصطناعي لكل توصية، أدخل مفتاح Claude API الخاص بك. يُحفظ المفتاح في متصفحك فقط (Local Storage) ولا يُرسل لأي مكان غير Anthropic مباشرة.</p>
+    <div class="ai-modal-status" id="aiModalStatus"></div>
+    <input type="password" id="aiKeyInput" data-i18n-ph="aiKeyPlaceholder" placeholder="sk-ant-..." autocomplete="off" />
+    <div class="ai-modal-actions">
+      <button class="ai-modal-close" type="button" onclick="closeAISettingsModal()" data-i18n="aiKeyClose">إغلاق</button>
+      <button class="ai-modal-clear" type="button" onclick="clearAIKeyAction()" data-i18n="aiKeyClear">مسح المفتاح</button>
+      <button class="ai-modal-save" type="button" onclick="saveAIKeyAction()" data-i18n="aiKeySave">حفظ</button>
+    </div>
+  </div>
+</div>
 
 <main>
 
@@ -1161,6 +1203,14 @@
       <section class="insight-card">
         <h3 id="whyHeading" data-i18n="whyHeading">لماذا هذه التوصية؟</h3>
         <div class="why-list" id="whyList"></div>
+        <div class="ai-explain-box">
+          <div class="ai-explain-head">
+            <span class="ai-explain-tag">✨ <span data-i18n="aiGeneratedTag">شرح بالذكاء الاصطناعي</span></span>
+            <button class="ai-explain-btn" type="button" id="decisionAIExplainBtn" onclick="requestDecisionAIExplanation()" data-i18n="aiGenerateBtn">إنشاء شرح بالذكاء الاصطناعي</button>
+          </div>
+          <div class="ai-explain-text" id="decisionAIExplainText"></div>
+          <div class="ai-explain-note" id="decisionAIExplainNote" data-i18n="aiDisclaimer">شرح تكميلي من Claude API بناءً على الأرقام المعروضة فقط — لا يُنشئ بيانات جديدة، وقد يحتوي أخطاء.</div>
+        </div>
       </section>
     </div>
 
@@ -1351,6 +1401,15 @@ const T = {
     mapErrorDetail: "تعذّر تحميل الخريطة (تحتاج اتصالًا بالإنترنت). الإحداثيات المحفوظة:",
     latLbl: "خط العرض (Latitude)", lngLbl: "خط الطول (Longitude)",
     propertyHash: "عقار #", pinLocation: "الموقع",
+    aiKeyNavBtn: "مفتاح الذكاء الاصطناعي", aiSettingsTitle: "مفتاح Claude API",
+    aiSettingsDesc: "لتفعيل الشرح بالذكاء الاصطناعي لكل توصية، أدخل مفتاح Claude API الخاص بك. يُحفظ المفتاح في متصفحك فقط (Local Storage) ولا يُرسل لأي مكان غير Anthropic مباشرة.",
+    aiKeyPlaceholder: "sk-ant-...", aiKeyClose: "إغلاق", aiKeyClear: "مسح المفتاح", aiKeySave: "حفظ",
+    aiKeyStatusSet: "✓ يوجد مفتاح محفوظ على هذا الجهاز.", aiKeyStatusUnset: "لا يوجد مفتاح محفوظ حاليًا.",
+    aiGeneratedTag: "شرح بالذكاء الاصطناعي", aiGenerateBtn: "إنشاء شرح بالذكاء الاصطناعي", aiRegenerateBtn: "إعادة الإنشاء",
+    aiDisclaimer: "شرح تكميلي من Claude API بناءً على الأرقام المعروضة فقط — لا يُنشئ بيانات جديدة، وقد يحتوي أخطاء.",
+    aiLoading: "جاري إنشاء الشرح بالذكاء الاصطناعي...",
+    aiErrorNoKey: "لم يتم إدخال مفتاح Claude API بعد. اضغط \"مفتاح الذكاء الاصطناعي\" أعلى الصفحة لإضافته.",
+    aiErrorGeneric: "تعذّر إنشاء الشرح حاليًا. تأكد من صحة المفتاح والاتصال بالإنترنت وحاول مرة أخرى.",
     errDataLoad: "تعذّر تحميل بيانات التقييم (data.json). تأكد من تشغيل الصفحة عبر خادم محلي وليس بفتح الملف مباشرة.",
     // decision intelligence
     decisionKicker: "ملخص القرار", confidenceText: "مستوى الثقة", whyHeading: "لماذا هذه التوصية؟",
@@ -1479,6 +1538,15 @@ const T = {
     mapErrorDetail: "Could not load the map (internet connection required). Saved coordinates:",
     latLbl: "Latitude", lngLbl: "Longitude",
     propertyHash: "Property #", pinLocation: "Location",
+    aiKeyNavBtn: "AI Key", aiSettingsTitle: "Claude API Key",
+    aiSettingsDesc: "To enable an AI-generated explanation for each recommendation, enter your Claude API key. It's stored only in your browser (Local Storage) and is sent only to Anthropic directly.",
+    aiKeyPlaceholder: "sk-ant-...", aiKeyClose: "Close", aiKeyClear: "Clear key", aiKeySave: "Save",
+    aiKeyStatusSet: "✓ A key is saved on this device.", aiKeyStatusUnset: "No key saved yet.",
+    aiGeneratedTag: "AI-generated explanation", aiGenerateBtn: "Generate AI Explanation", aiRegenerateBtn: "Regenerate",
+    aiDisclaimer: "Supplementary explanation from the Claude API, based only on the figures shown above — it does not invent new data, and may contain errors.",
+    aiLoading: "Generating AI explanation...",
+    aiErrorNoKey: "No Claude API key set yet. Click \"AI Key\" at the top of the page to add one.",
+    aiErrorGeneric: "Could not generate the explanation right now. Check the key and your internet connection, then try again.",
     errDataLoad: "Failed to load evaluation data (data.json). Make sure the page is served from a local server rather than opened directly as a file.",
     // decision intelligence
     decisionKicker: "Decision Summary", confidenceText: "Confidence Level", whyHeading: "Why this recommendation?",
@@ -1521,6 +1589,7 @@ function toggleLanguage() {
   document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
   document.getElementById('langToggleBtn').textContent = currentLang === 'ar' ? 'EN' : 'AR';
   applyStaticI18n();
+  refreshAIKeyStatusUI();
   buildLegend('legend');
   buildLegend('ownerLegend');
   // Re-render whichever dynamic view is currently active
@@ -2175,6 +2244,135 @@ function renderDecisionIntelligence(p) {
     if (sp) sp.value = Math.round(p.price || 0);
   }
   renderComparisonTable(p.id);
+  renderDecisionAIExplanationUI(p);
+}
+
+// ---- AI-generated recommendation explanation (Claude API, bring-your-own-key) ----
+const QARARAK_AI_KEY_STORAGE = 'qararak_claude_api_key';
+function getClaudeApiKey() { try { return localStorage.getItem(QARARAK_AI_KEY_STORAGE) || ''; } catch (e) { return ''; } }
+function setClaudeApiKey(key) {
+  try {
+    if (key) localStorage.setItem(QARARAK_AI_KEY_STORAGE, key);
+    else localStorage.removeItem(QARARAK_AI_KEY_STORAGE);
+  } catch (e) {}
+}
+
+function refreshAIKeyStatusUI() {
+  const has = !!getClaudeApiKey();
+  const dot = document.getElementById('aiKeyDot');
+  if (dot) dot.classList.toggle('set', has);
+  const status = document.getElementById('aiModalStatus');
+  if (status) status.textContent = has ? t('aiKeyStatusSet') : t('aiKeyStatusUnset');
+}
+function openAISettingsModal() {
+  const modal = document.getElementById('aiSettingsModal');
+  const input = document.getElementById('aiKeyInput');
+  if (input) input.value = getClaudeApiKey();
+  refreshAIKeyStatusUI();
+  if (modal) modal.hidden = false;
+}
+function closeAISettingsModal() { const modal = document.getElementById('aiSettingsModal'); if (modal) modal.hidden = true; }
+function saveAIKeyAction() {
+  const input = document.getElementById('aiKeyInput');
+  setClaudeApiKey((input?.value || '').trim());
+  refreshAIKeyStatusUI();
+}
+function clearAIKeyAction() {
+  setClaudeApiKey('');
+  const input = document.getElementById('aiKeyInput');
+  if (input) input.value = '';
+  refreshAIKeyStatusUI();
+}
+
+async function callClaudeForExplanation(promptText) {
+  const key = getClaudeApiKey();
+  if (!key) return { ok: false, reason: 'no_key' };
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-5',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: promptText }],
+      }),
+    });
+    if (!res.ok) return { ok: false, reason: 'http_error', status: res.status };
+    const data = await res.json();
+    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+    if (!text) return { ok: false, reason: 'empty' };
+    return { ok: true, text };
+  } catch (e) {
+    return { ok: false, reason: 'network' };
+  }
+}
+
+function buildDecisionAIExplanationPrompt(p) {
+  const a = p.analysis || {};
+  const lang = currentLang === 'ar' ? 'Arabic' : 'English';
+  const rec = document.getElementById('decisionHeroLabel')?.textContent || '';
+  const conf = document.getElementById('confidencePct')?.textContent || '';
+  const audience = p.type === 'owner' ? 'a property owner deciding whether to sell, rent, or hold' : 'a prospective property buyer';
+  const lines = [];
+  lines.push(`You are a real-estate decision assistant for the Qararak app. Write a short, clear explanation (3-5 sentences, plain language, no headings, no markdown) in ${lang} for ${audience}, explaining why the tool arrived at this recommendation. Reference only the figures given below — never invent numbers, comparable prices, or facts not listed here.`);
+  lines.push(`Recommendation: ${rec}`);
+  if (conf) lines.push(`Confidence score: ${conf}`);
+  if (a.loc?.overallScore != null) lines.push(`Location score: ${a.loc.overallScore}/100`);
+  if (a.priceVsFair != null) lines.push(`Price vs fair market value: ${a.priceVsFair}%`);
+  if (a.yieldPct != null) lines.push(`Estimated rental yield: ${a.yieldPct}%`);
+  if (a.cashEq) lines.push(`Cash-equivalent price of payment plan: ${Math.round(a.cashEq).toLocaleString()} EGP`);
+  if (a.appreciationPct != null) lines.push(`Appreciation since purchase: ${a.appreciationPct}%`);
+  if (p.district) lines.push(`District: ${districtLabel(p.district)}`);
+  if (p.area) lines.push(`Area: ${p.area} sqm`);
+  if (p.price) lines.push(`Price: ${p.price} EGP`);
+  if (p.needsLiquidity) lines.push(`Owner liquidity need: ${p.needsLiquidity}`);
+  return lines.join('\n');
+}
+
+function renderDecisionAIExplanationUI(p) {
+  const btn = document.getElementById('decisionAIExplainBtn');
+  const box = document.getElementById('decisionAIExplainText');
+  if (!btn || !box) return;
+  if (p.aiExplanation) {
+    box.textContent = p.aiExplanation;
+    btn.textContent = t('aiRegenerateBtn');
+  } else if (p.aiExplanationError) {
+    box.textContent = p.aiExplanationError;
+    btn.textContent = t('aiGenerateBtn');
+  } else {
+    box.textContent = '';
+    btn.textContent = t('aiGenerateBtn');
+  }
+  btn.disabled = false;
+}
+
+async function requestDecisionAIExplanation() {
+  const id = window.__currentDetailId;
+  const p = savedProperties.find(x => x.id === id);
+  if (!p) return;
+  const btn = document.getElementById('decisionAIExplainBtn');
+  const box = document.getElementById('decisionAIExplainText');
+  if (!getClaudeApiKey()) {
+    if (box) box.textContent = t('aiErrorNoKey');
+    return;
+  }
+  if (btn) btn.disabled = true;
+  if (box) box.textContent = t('aiLoading');
+  const result = await callClaudeForExplanation(buildDecisionAIExplanationPrompt(p));
+  if (result.ok) {
+    p.aiExplanation = result.text;
+    p.aiExplanationError = null;
+  } else {
+    p.aiExplanation = null;
+    p.aiExplanationError = t('aiErrorGeneric');
+  }
+  persistProperties();
+  renderDecisionAIExplanationUI(p);
 }
 
 function scenarioCashEquivalent(p, annualRate) {
@@ -2363,6 +2561,7 @@ addPaymentRow('delivery', 4000000, '2027-06-01');
 initNewMap();
 initOwnerMap();
 showView('home');
+refreshAIKeyStatusUI();
 </script>
 </body>
 </html>
