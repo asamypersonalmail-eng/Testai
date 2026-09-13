@@ -1,0 +1,1753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HDB Service Catalog &amp; Dependency Explorer</title>
+<style>
+  /* Two coordinated accents only: --accent (services / "entry points") and
+     --accent-2 (backends / "destinations"). Flows are neutral gray, REST
+     method badges get their own small distinguishable set (a documentation
+     convention, not decoration) but stay flat/muted rather than glowing. */
+  :root{
+    --bg:#f6f7fa;
+    --bg-1:#ffffff;
+    --bg-2:#f1f2f6;
+    --bg-3:#e7e9f0;
+    --border:#dfe2ea;
+    --border-light:#cbd0dc;
+    --text:#1d2130;
+    --text-dim:#5c6478;
+    --text-faint:#8991a4;
+    --accent:#3a5fd9;
+    --accent-2:#0f9488;
+    --accent-dim:#e8edfc;
+    --accent-glow:rgba(58,95,217,.28);
+    --radius:10px;
+    --shadow:0 2px 12px rgba(30,35,55,.08);
+    --shadow-lg:0 18px 48px rgba(30,35,55,.18);
+    --mono:"Cascadia Code","Consolas","SFMono-Regular",Menlo,monospace;
+    --n-service:#3a5fd9;
+    --n-flow:#9198ac;
+    --n-backend:#0f9488;
+    --n-system:#0f9488;
+    --e-implements:#3a5fd9;
+    --e-subflow:#d7dae4;
+    --e-callable:#828aa3;
+    --e-backend:#0f9488;
+    --e-reaches:#0f9488;
+    --grid-dot:rgba(60,70,100,.10);
+    --panel-glass:rgba(255,255,255,.88);
+    --overlay-glass:rgba(255,255,255,.8);
+    --mainbar-shadow:rgba(30,35,55,.06);
+    --get:#3a5fd9;
+    --post:#0f9488;
+    --put:#c08a2e;
+    --patch:#8f7fce;
+    --delete:#c2565d;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0a0d13;
+    --bg-1:#10141c;
+    --bg-2:#161b26;
+    --bg-3:#1d2432;
+    --border:#232b3c;
+    --border-light:#2d3650;
+    --text:#e4e8f2;
+    --text-dim:#9aa3b8;
+    --text-faint:#5c6580;
+    --accent:#6a8eef;
+    --accent-2:#2fd1bd;
+    --accent-dim:#152036;
+    --accent-glow:rgba(106,142,239,.32);
+    --shadow:0 4px 18px rgba(0,0,0,.4);
+    --shadow-lg:0 20px 60px rgba(0,0,0,.6);
+    --n-service:#6a8eef;
+    --n-flow:#5b6480;
+    --n-backend:#2fd1bd;
+    --n-system:#2fd1bd;
+    --e-implements:#6a8eef;
+    --e-subflow:#2a3350;
+    --e-callable:#7883a6;
+    --e-backend:#2fd1bd;
+    --e-reaches:#2fd1bd;
+    --grid-dot:rgba(106,142,239,.06);
+    --panel-glass:rgba(13,18,27,.9);
+    --overlay-glass:rgba(9,12,18,.75);
+    --mainbar-shadow:rgba(0,0,0,.4);
+    --get:#6a8eef;
+    --post:#2fd1bd;
+    --put:#d1a24f;
+    --patch:#ab9cf0;
+    --delete:#e0767c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;}
+  body{
+    font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+  }
+  ::selection{background:var(--accent-dim);color:var(--accent);}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-track{background:var(--bg-1);}
+  ::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:6px;}
+  ::-webkit-scrollbar-thumb:hover{background:var(--text-faint);}
+
+  /* ---------- Header ---------- */
+  .topbar{
+    background:var(--bg-1); border-bottom:1px solid var(--border); color:var(--text-faint);
+    font-family:var(--mono); font-size:11px; padding:6px 20px; letter-spacing:.2px;
+    display:flex; justify-content:space-between; align-items:center; flex:none;
+  }
+  .topbar .dot{
+    width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;margin-right:7px;
+    box-shadow:0 0 6px var(--accent-glow);
+  }
+
+  .mainbar{
+    background:var(--bg-1); border-bottom:1px solid var(--border); padding:10px 20px;
+    display:flex; align-items:center; justify-content:space-between; gap:14px; flex:none; flex-wrap:wrap;
+    box-shadow:0 1px 0 var(--mainbar-shadow);
+  }
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{width:32px;height:32px;position:relative;flex:none;}
+  .brand h1{font-size:14.5px;margin:0;color:var(--text);font-weight:600;letter-spacing:.2px;}
+  .brand p{margin:1px 0 0;font-size:11px;color:var(--text-faint);font-family:var(--mono);}
+
+  .tabs{display:flex;border:1px solid var(--border-light);border-radius:7px;overflow:hidden;flex:none;}
+  .tabs button{
+    border:none;background:var(--bg-2);padding:8px 16px;font-size:12.5px;font-weight:600;cursor:pointer;
+    color:var(--text-dim);transition:.12s;display:flex;align-items:center;gap:6px;
+  }
+  .tabs button:hover{color:var(--accent);}
+  .tabs button.on{background:var(--accent);color:#fff;}
+
+  .global-stats{display:flex;gap:8px;flex-wrap:wrap;}
+  .stat-chip{
+    background:var(--accent-dim);border:1px solid var(--border);color:var(--text-dim);
+    padding:5px 11px;border-radius:20px;font-size:11.5px;font-weight:600;
+    display:flex;gap:5px;align-items:baseline;font-family:var(--mono);
+  }
+  .stat-chip b{font-size:12.5px;color:var(--accent);}
+
+  .toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+  .btn{
+    border:1px solid var(--border-light); background:var(--bg-2); color:var(--text-dim);
+    padding:7px 13px; border-radius:7px; font-size:12.5px; cursor:pointer; font-weight:600;
+    transition:.12s;
+  }
+  .btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim);}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .btn.primary:hover{filter:brightness(1.1);}
+  .btn.ghost{border:none;background:none;color:var(--text-dim);}
+  .btn.small{padding:4px 9px;font-size:11.5px;}
+  .btn-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+  .seg{display:flex;border:1px solid var(--border-light);border-radius:7px;overflow:hidden;}
+  .seg button{
+    border:none;background:var(--bg-2);padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer;
+    color:var(--text-dim);transition:.12s;
+  }
+  .seg button:hover{color:var(--accent);}
+  .seg button.on{background:var(--accent);color:#fff;}
+
+  .search-box{position:relative;}
+  .search-box input{
+    padding:8px 11px 8px 30px;border:1px solid var(--border-light);border-radius:7px;font-size:12.5px;
+    background:var(--bg-2);color:var(--text);width:100%;
+  }
+  .search-box input::placeholder{color:var(--text-faint);}
+  .search-box input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim);}
+  .search-box svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);opacity:.5;color:var(--text-dim);}
+
+  /* ---------- Layout ---------- */
+  .layout{flex:1;display:flex;min-height:0;}
+  .sidebar-left{
+    width:290px;flex:none;background:var(--bg-1);border-right:1px solid var(--border);
+    overflow-y:auto;padding:14px;
+  }
+  .sidebar-right{
+    width:300px;flex:none;background:var(--bg-1);border-left:1px solid var(--border);
+    display:none;flex-direction:column;
+  }
+  .main-area{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;}
+
+  .panel{
+    background:var(--bg-1);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);
+  }
+  .panel + .panel{margin-top:14px;}
+  .panel-header{
+    padding:11px 13px;border-bottom:1px solid var(--border);font-size:11.5px;font-weight:700;color:var(--text-dim);
+    display:flex;align-items:center;justify-content:space-between;text-transform:uppercase;letter-spacing:.5px;
+  }
+  .panel-body{padding:13px;}
+
+  /* ---------- Upload zone ---------- */
+  .dropzone{
+    border:1.5px dashed var(--border-light);border-radius:var(--radius);padding:18px 10px;text-align:center;
+    color:var(--text-dim);font-size:12.5px;cursor:pointer;transition:.15s;background:var(--bg-2);
+  }
+  .dropzone:hover,.dropzone.dragover{border-color:var(--accent);background:var(--accent-dim);color:var(--accent);}
+  .dropzone svg{display:block;margin:0 auto 8px;opacity:.6;}
+  .dropzone input{display:none;}
+  .dz-hint{font-size:10.5px;color:var(--text-faint);margin-top:4px;font-family:var(--mono);}
+
+  .catalog-item{display:flex;align-items:flex-start;gap:8px;padding:8px;border-radius:6px;font-size:12.5px;}
+  .catalog-item:hover{background:var(--bg-2);}
+  .catalog-item input[type=checkbox]{margin-top:3px;accent-color:var(--accent);}
+  .catalog-item .ci-name{font-weight:600;color:var(--text);word-break:break-word;}
+  .catalog-item .ci-meta{color:var(--text-faint);font-size:10.5px;margin-top:1px;font-family:var(--mono);}
+  .catalog-item .ci-remove{
+    margin-left:auto;background:none;border:none;color:var(--text-faint);cursor:pointer;
+    font-size:15px;line-height:1;padding:2px 4px;border-radius:4px;
+  }
+  .catalog-item .ci-remove:hover{color:var(--delete);background:var(--accent-dim);}
+
+  /* ---------- Filters ---------- */
+  .filter-group{margin-bottom:13px;}
+  .filter-group:last-child{margin-bottom:0;}
+  .filter-title{
+    font-size:10.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;
+    letter-spacing:.5px;margin-bottom:6px;
+  }
+  .chip-list{display:flex;flex-wrap:wrap;gap:6px;}
+  .chip{
+    border:1px solid var(--border-light);background:var(--bg-2);padding:4px 10px;border-radius:20px;
+    font-size:11px;cursor:pointer;user-select:none;color:var(--text-dim);font-weight:600;
+  }
+  .chip.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .chip .n{opacity:.75;font-weight:400;margin-left:3px;}
+
+  .facet-scroll{max-height:170px;overflow-y:auto;}
+  .facet-row{display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 0;color:var(--text-dim);}
+  .facet-row input{accent-color:var(--accent);}
+  .facet-row .fc-count{margin-left:auto;color:var(--text-faint);font-size:10.5px;}
+  .fdot{width:9px;height:9px;border-radius:50%;flex:none;}
+  .legend-line{width:16px;height:0;border-top:2px solid;flex:none;}
+
+  /* ---------- Catalog tab ---------- */
+  #catalogTabView{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px;overflow-y:auto;}
+  .toolbar-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+  .results-count{font-size:12px;color:var(--text-faint);white-space:nowrap;font-family:var(--mono);}
+  .empty-state{padding:50px 24px;text-align:center;color:var(--text-faint);}
+  .empty-state h3{color:var(--text);margin-bottom:6px;font-size:16px;}
+  .empty-state p{font-size:13px;max-width:420px;margin:0 auto;}
+
+  table.svc-table{width:100%;border-collapse:collapse;font-size:13px;}
+  table.svc-table thead th{
+    text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-faint);
+    border-bottom:1px solid var(--border);padding:8px 10px;position:sticky;top:0;background:var(--bg-1);
+  }
+  table.svc-table tbody tr{cursor:pointer;border-bottom:1px solid var(--border);}
+  table.svc-table tbody tr:hover{background:var(--accent-dim);}
+  table.svc-table td{padding:9px 10px;vertical-align:top;}
+  .path-cell{font-family:var(--mono);font-size:12px;color:var(--text-dim);}
+  .svc-name{font-weight:700;color:var(--text);font-size:13px;}
+  .svc-summary{color:var(--text-faint);font-size:11.5px;margin-top:2px;}
+  .tag-pill{
+    display:inline-block;background:var(--bg-3);color:var(--text-dim);border-radius:10px;
+    padding:1px 8px;font-size:10px;margin:1px 3px 1px 0;font-weight:600;
+  }
+  .src-pill{
+    display:inline-block;background:var(--accent-dim);color:var(--accent);border-radius:10px;
+    padding:1px 8px;font-size:10px;font-weight:600;
+  }
+  .method-badge{
+    display:inline-block;min-width:50px;text-align:center;color:#fff;font-weight:700;
+    font-size:10.5px;padding:3px 7px;border-radius:5px;letter-spacing:.3px;
+  }
+  .m-GET{background:var(--get);}
+  .m-POST{background:var(--post);}
+  .m-PUT{background:var(--put);}
+  .m-PATCH{background:var(--patch);}
+  .m-DELETE{background:var(--delete);}
+
+  /* ---------- Detail drawer (catalog service) ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(5,7,12,.5);display:none;z-index:40;}
+  .overlay.show{display:block;}
+  .drawer{
+    position:fixed;top:0;right:0;height:100%;width:min(720px,92vw);
+    background:var(--bg-1);z-index:41;box-shadow:var(--shadow-lg);
+    transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column;
+  }
+  .drawer.show{transform:translateX(0);}
+  .drawer-head{background:var(--bg-2);color:var(--text);padding:18px 22px;border-bottom:1px solid var(--border);}
+  .drawer-head .dh-top{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .drawer-head h2{font-size:16px;margin:0;font-weight:700;font-family:var(--mono);}
+  .drawer-head .dh-path{font-family:var(--mono);font-size:12.5px;color:var(--accent);margin-top:4px;}
+  .drawer-head .dh-summary{font-size:12.5px;color:var(--text-dim);margin-top:6px;}
+  .drawer-close{
+    margin-left:auto;background:var(--bg-3);border:none;color:var(--text-dim);
+    width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:16px;
+  }
+  .drawer-close:hover{background:var(--border-light);color:var(--text);}
+  .drawer-actions{margin-top:10px;}
+  .drawer-body{padding:20px 22px;overflow-y:auto;flex:1;}
+
+  .dsection{margin-bottom:22px;}
+  .dsection h4{
+    font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent-2);
+    margin:0 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px;font-weight:700;
+  }
+  .kv-grid{display:grid;grid-template-columns:150px 1fr;gap:6px 12px;font-size:12.5px;}
+  .kv-grid dt{color:var(--text-faint);font-weight:600;}
+  .kv-grid dd{margin:0;color:var(--text);word-break:break-all;}
+  .badge-ok{color:var(--accent-2);font-weight:700;}
+  .badge-no{color:var(--text-faint);}
+
+  table.mini-table{width:100%;border-collapse:collapse;font-size:12px;}
+  table.mini-table th{
+    text-align:left;background:var(--bg-2);color:var(--text-faint);padding:6px 8px;
+    font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border);
+  }
+  table.mini-table td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:top;}
+  table.mini-table tr:last-child td{border-bottom:none;}
+  .req-yes{color:var(--delete);font-weight:700;font-size:11px;}
+  .req-no{color:var(--text-faint);font-size:11px;}
+  code.inline{background:var(--bg-3);padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:11px;}
+
+  pre.json-view{
+    background:var(--bg-2);color:var(--text-dim);padding:12px 14px;border-radius:6px;border:1px solid var(--border);
+    font-size:12px;overflow-x:auto;line-height:1.5;font-family:var(--mono);
+  }
+  .jk{color:var(--accent);}
+  .js{color:var(--accent-2);}
+  .jn{color:var(--put);}
+  .jb{color:var(--patch);}
+
+  .backend-card{
+    border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;
+    font-size:12px;background:var(--bg-2);
+  }
+  .backend-card .bc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+  .backend-card .bc-node{font-weight:700;color:var(--text);}
+  .backend-card .bc-sys{background:var(--accent-dim);color:var(--accent-2);border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;}
+  .backend-card .bc-url{font-family:var(--mono);font-size:11px;color:var(--text-dim);word-break:break-all;}
+  .proto-pill{
+    display:inline-block;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;
+    background:var(--bg-3);color:var(--text-dim);margin-right:6px;
+  }
+  .no-data{color:var(--text-faint);font-size:12px;font-style:italic;}
+
+  /* ---------- Graph tab ---------- */
+  #graphTabView{flex:1;min-height:0;display:none;flex-direction:column;}
+  .canvas-wrap{
+    flex:1;position:relative;background:
+      radial-gradient(circle at 1px 1px, var(--grid-dot) 1px, transparent 0) 0 0/28px 28px,
+      var(--bg);
+  }
+  canvas{display:block;width:100%;height:100%;cursor:grab;}
+  canvas.dragging{cursor:grabbing;}
+
+  .empty-overlay{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:12px;color:var(--text-dim);text-align:center;padding:20px;
+  }
+  .empty-overlay p{margin:0;font-size:12.5px;max-width:380px;color:var(--text-faint);font-family:var(--mono);}
+
+  .legend{
+    position:absolute;left:14px;bottom:14px;background:var(--panel-glass);backdrop-filter:blur(6px);
+    border:1px solid var(--border);border-radius:var(--radius);padding:11px 13px;font-size:11.5px;
+    box-shadow:var(--shadow);max-width:220px;
+  }
+  .legend h4{margin:0 0 7px;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-faint);font-weight:700;}
+  .legend-row{display:flex;align-items:center;gap:7px;margin:4px 0;color:var(--text-dim);}
+  .legend-dot{width:9px;height:9px;border-radius:50%;flex:none;}
+
+  .stats-bar{
+    position:absolute;right:14px;top:14px;background:var(--panel-glass);backdrop-filter:blur(6px);
+    border:1px solid var(--border);border-radius:var(--radius);padding:8px 14px;font-size:11.5px;
+    box-shadow:var(--shadow);color:var(--text-faint);display:flex;gap:14px;font-family:var(--mono);
+  }
+  .stats-bar b{color:var(--accent);}
+
+  .sidebar-section{border-bottom:1px solid var(--border);padding:14px 16px;}
+  .sidebar-section h4{
+    font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-faint);margin:0 0 9px;font-weight:700;
+  }
+  .filter-row{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 0;color:var(--text-dim);}
+  .filter-row input{accent-color:var(--accent);}
+
+  .detail-panel{flex:1;overflow-y:auto;padding:16px;}
+  .detail-empty{color:var(--text-faint);font-size:12.5px;font-style:italic;}
+  .detail-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;word-break:break-word;font-family:var(--mono);}
+  .detail-type{
+    display:inline-block;font-size:10px;font-weight:700;padding:3px 9px;border-radius:10px;margin-bottom:12px;
+    text-transform:uppercase;letter-spacing:.4px;
+  }
+  .neighbor-list{list-style:none;margin:0;padding:0;}
+  .neighbor-list li{
+    padding:7px 9px;border-radius:7px;font-size:12px;cursor:pointer;display:flex;justify-content:space-between;
+    gap:6px;color:var(--text-dim);transition:.1s;
+  }
+  .neighbor-list li:hover{background:var(--accent-dim);color:var(--accent);}
+  .neighbor-list .nl-type{font-size:9.5px;color:var(--text-faint);text-transform:uppercase;}
+
+  .loading-overlay{
+    position:absolute;inset:0;background:var(--overlay-glass);display:none;align-items:center;justify-content:center;
+    font-size:13px;color:var(--accent);font-weight:600;font-family:var(--mono);
+  }
+  .loading-overlay.show{display:flex;}
+
+  .crossnav-btn{
+    display:inline-flex;align-items:center;gap:6px;width:100%;justify-content:center;
+    margin-top:8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div><span class="dot"></span>HDB Banking API &mdash; Service Catalog &amp; Dependency Explorer</div>
+  <div>Files stay in your browser &mdash; nothing is uploaded anywhere</div>
+</div>
+
+<div class="mainbar">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+        <line x1="16" y1="16" x2="6" y2="8" style="stroke:var(--border-light)" stroke-width="1.4"/>
+        <line x1="16" y1="16" x2="26" y2="8" style="stroke:var(--border-light)" stroke-width="1.4"/>
+        <line x1="16" y1="16" x2="16" y2="27" style="stroke:var(--border-light)" stroke-width="1.4"/>
+        <circle cx="16" cy="16" r="4.5" style="fill:var(--accent)"/>
+        <circle cx="6" cy="8" r="3" style="fill:var(--accent-2)"/>
+        <circle cx="26" cy="8" r="3" style="fill:var(--accent-2)"/>
+        <circle cx="16" cy="27" r="3" style="fill:var(--accent-2)"/>
+      </svg>
+    </div>
+    <div>
+      <h1>Service Catalog &amp; Dependency Explorer</h1>
+      <p>Browse services and their call graph from ACE service catalog JSON files</p>
+    </div>
+  </div>
+  <div class="tabs" id="tabSwitch">
+    <button data-tab="catalog" class="on">📋 Service Catalog</button>
+    <button data-tab="graph">🕸️ Dependency Graph</button>
+  </div>
+  <div class="global-stats" id="globalStats"></div>
+  <button class="btn" id="themeToggleBtn">🌙 Dark</button>
+</div>
+
+<div class="layout">
+  <!-- Shared left sidebar -->
+  <div class="sidebar-left">
+    <div class="panel">
+      <div class="panel-header">Load Catalogs</div>
+      <div class="panel-body">
+        <label class="dropzone" id="dropzone">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+          <div>Drop service_catalog.json files here</div>
+          <div class="dz-hint">or click to browse &middot; multiple catalogs supported</div>
+          <input type="file" id="fileInput" accept="application/json,.json" multiple>
+        </label>
+        <div id="catalogList" style="margin-top:10px;"></div>
+        <div class="btn-row" id="catalogActions" style="display:none;">
+          <button class="btn small" id="clearAllBtn">Clear all</button>
+          <button class="btn small" id="exportBtn">Export merged JSON</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Catalog-tab-only filters -->
+    <div class="panel" id="catalogFiltersPanel" style="display:none;">
+      <div class="panel-header">
+        Filters
+        <button class="btn ghost small" id="resetFiltersBtn">Reset</button>
+      </div>
+      <div class="panel-body">
+        <div class="filter-group">
+          <div class="filter-title">HTTP Method</div>
+          <div class="chip-list" id="methodChips"></div>
+        </div>
+        <div class="filter-group">
+          <div class="filter-title">Tags</div>
+          <div class="facet-scroll" id="tagFacets"></div>
+        </div>
+        <div class="filter-group">
+          <div class="filter-title">Backend System</div>
+          <div class="facet-scroll" id="backendFacets"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Graph-tab-only controls -->
+    <div class="panel" id="graphControlsPanel" style="display:none;">
+      <div class="panel-header">Graph View</div>
+      <div class="panel-body">
+        <div class="filter-group">
+          <div class="filter-title">Mode</div>
+          <div class="seg" id="viewModeSeg" style="width:100%;">
+            <button data-mode="simplified" class="on" style="flex:1;">Simplified</button>
+            <button data-mode="full" style="flex:1;">Code Detail</button>
+          </div>
+        </div>
+        <div class="filter-group">
+          <div class="filter-title">Find a node</div>
+          <div class="search-box">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            <input type="text" id="graphSearchInput" placeholder="Find a node...">
+          </div>
+        </div>
+        <div class="filter-group" id="graphNodeFiltersGroup">
+          <div class="filter-title">Show</div>
+          <div id="nodeFilters"></div>
+          <div id="edgeFilters" style="margin-top:6px;"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn small" id="resetViewBtn">Reset view</button>
+          <button class="btn small" id="unpinBtn">Re-layout</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main area: one tab visible at a time -->
+  <div class="main-area">
+    <div id="catalogTabView">
+      <div id="catalogEmptyState" class="panel">
+        <div class="empty-state">
+          <h3>No catalog loaded yet</h3>
+          <p>Upload one or more enriched service catalog JSON files using the panel on the left to start exploring services, parameters, schemas, backend systems &mdash; and their dependency graph.</p>
+        </div>
+      </div>
+      <div id="catalogResultsWrap" style="display:none;">
+        <div class="panel">
+          <div class="panel-body">
+            <div class="toolbar-row">
+              <div class="search-box" style="flex:1;min-width:220px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <input type="text" id="catalogSearchInput" placeholder="Search by service name, path, summary, description, backend system…">
+              </div>
+              <div class="results-count" id="resultsCount"></div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="svc-table">
+                <thead>
+                  <tr>
+                    <th style="width:70px;">Method</th>
+                    <th>Service</th>
+                    <th style="width:150px;">Tags</th>
+                    <th style="width:70px;">Backends</th>
+                    <th style="width:130px;">Source</th>
+                  </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="graphTabView">
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="graphCanvas"></canvas>
+        <div class="empty-overlay" id="graphEmptyOverlay">
+          <div style="font-size:15px;font-weight:700;color:var(--text);">No catalog loaded yet</div>
+          <p>Upload a service catalog using the panel on the left &mdash; the dependency graph is derived automatically from it, no separate file needed.</p>
+        </div>
+        <div class="legend" id="legend" style="display:none;"></div>
+        <div class="stats-bar" id="statsBar" style="display:none;"></div>
+        <div class="loading-overlay" id="loadingOverlay">Laying out graph&hellip;</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Graph-tab-only right sidebar -->
+  <div class="sidebar-right" id="graphDetailSidebar">
+    <div class="sidebar-section" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+      <h4>Details</h4>
+      <div class="detail-panel" id="detailPanel">
+        <div class="detail-empty">Click a node to see its details and connections.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div class="dh-top">
+      <span id="drawerMethod"></span>
+      <h2 id="drawerName"></h2>
+      <button class="drawer-close" id="drawerClose">✕</button>
+    </div>
+    <div class="dh-path" id="drawerPath"></div>
+    <div class="dh-summary" id="drawerSummary"></div>
+    <div class="drawer-actions">
+      <button class="btn primary crossnav-btn" id="viewInGraphBtn">🕸️ View in Dependency Graph</button>
+    </div>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ======================================================================
+  // Shared state
+  // ======================================================================
+  var STORAGE_KEY = "hdb_explorer_catalogs_v1";
+  var THEME_KEY = "hdb_explorer_theme";
+  var catalogs = [];      // {id, fileName, size, data, visible}
+  var services = [];      // flattened, one entry per service across all catalogs
+  var catalogState = { search:"", methods:new Set(), tags:new Set(), backends:new Set() };
+  var activeTab = "catalog";
+  var currentDrawerKey = null;
+
+  var TYPE_COLORS = {}, EDGE_COLORS = {}, UI = {};
+  function getCss(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function refreshColors(){
+    TYPE_COLORS = {
+      service: getCss("--n-service"), flow: getCss("--n-flow"),
+      backend: getCss("--n-backend"), backend_system: getCss("--n-system"),
+    };
+    EDGE_COLORS = {
+      implements: getCss("--e-implements"), subflow: getCss("--e-subflow"),
+      callable_flow: getCss("--e-callable"), backend_call: getCss("--e-backend"),
+      reaches_backend_system: getCss("--e-reaches"),
+    };
+    UI = { text: getCss("--text"), textDim: getCss("--text-dim"), accent2: getCss("--accent-2") };
+  }
+  refreshColors();
+
+  function applyTheme(theme){
+    if(theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
+    else document.documentElement.removeAttribute("data-theme");
+    try{ localStorage.setItem(THEME_KEY, theme); }catch(e){}
+    var btn = document.getElementById("themeToggleBtn");
+    if(btn) btn.textContent = theme === "dark" ? "☀️ Light" : "🌙 Dark";
+    refreshColors();
+    if(activeGraph){
+      renderGraphFilters();
+      renderLegend();
+      if(selectedId) renderGraphDetail(selectedId);
+      if(!simRunning) draw(visibleGraph());
+    }
+  }
+  document.getElementById("themeToggleBtn").addEventListener("click", function(){
+    var isDark = document.documentElement.getAttribute("data-theme") === "dark";
+    applyTheme(isDark ? "light" : "dark");
+  });
+  (function initTheme(){
+    var saved = null;
+    try{ saved = localStorage.getItem(THEME_KEY); }catch(e){}
+    applyTheme(saved || "dark");
+  })();
+
+  // ======================================================================
+  // Tab switching
+  // ======================================================================
+  document.getElementById("tabSwitch").addEventListener("click", function(e){
+    var btn = e.target.closest("button[data-tab]");
+    if(!btn) return;
+    switchTab(btn.getAttribute("data-tab"));
+  });
+
+  var graphDirty = true;
+  function switchTab(tab){
+    activeTab = tab;
+    document.querySelectorAll("#tabSwitch button").forEach(function(b){
+      b.classList.toggle("on", b.getAttribute("data-tab") === tab);
+    });
+    document.getElementById("catalogTabView").style.display = tab === "catalog" ? "flex" : "none";
+    document.getElementById("graphTabView").style.display = tab === "graph" ? "flex" : "none";
+    document.getElementById("catalogFiltersPanel").style.display = (tab === "catalog" && catalogs.length) ? "block" : "none";
+    document.getElementById("graphControlsPanel").style.display = (tab === "graph" && catalogs.length) ? "block" : "none";
+    document.getElementById("graphDetailSidebar").style.display = tab === "graph" ? "flex" : "none";
+
+    if(tab === "graph" && catalogs.length){
+      resizeCanvas();
+      if(graphDirty || !activeGraph){
+        setGraphMode(graphMode);
+        graphDirty = false;
+      }else if(!simRunning){
+        draw(visibleGraph());
+      }
+    }
+  }
+
+  // ======================================================================
+  // Persistence
+  // ======================================================================
+  function persist(){
+    try{
+      var payload = catalogs.map(function(c){
+        return { id:c.id, fileName:c.fileName, size:c.size, data:c.data, visible:c.visible };
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    }catch(e){ /* storage full or unavailable — session state still works */ }
+  }
+  function loadPersisted(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return;
+      JSON.parse(raw).forEach(function(c){ catalogs.push(c); });
+    }catch(e){ /* ignore corrupt storage */ }
+  }
+
+  // ======================================================================
+  // File loading (shared — one upload feeds both tabs)
+  // ======================================================================
+  function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
+
+  function handleFiles(fileList){
+    var files = Array.prototype.slice.call(fileList);
+    var pending = files.length;
+    if(!pending) return;
+    files.forEach(function(file){
+      var reader = new FileReader();
+      reader.onload = function(e){
+        try{
+          var data = JSON.parse(e.target.result);
+          if(!data || !Array.isArray(data.services)){
+            throw new Error("File does not contain a \"services\" array");
+          }
+          catalogs.push({ id: uid(), fileName: file.name, size: file.size, data: data, visible: true });
+        }catch(err){
+          alert("Could not load \"" + file.name + "\":\n" + err.message);
+        }finally{
+          pending--;
+          if(pending === 0){ persist(); rebuild(); }
+        }
+      };
+      reader.onerror = function(){
+        pending--;
+        alert("Failed to read file: " + file.name);
+        if(pending === 0){ persist(); rebuild(); }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  function removeCatalog(id){
+    catalogs = catalogs.filter(function(c){ return c.id !== id; });
+    persist();
+    rebuild();
+  }
+  function clearAll(){
+    if(!confirm("Remove all loaded catalogs?")) return;
+    catalogs = [];
+    localStorage.removeItem(STORAGE_KEY);
+    rebuild();
+  }
+
+  // ======================================================================
+  // Build flattened service index + graph data (single source of truth)
+  // ======================================================================
+  function rebuild(){
+    services = [];
+    catalogs.forEach(function(cat){
+      var meta = cat.data;
+      (meta.services || []).forEach(function(svc, idx){
+        services.push({
+          key: cat.id + "::" + idx,
+          catalogId: cat.id,
+          catalogName: meta.catalog_name || cat.fileName,
+          fileName: cat.fileName,
+          service_name: svc.service_name || "(unnamed)",
+          method: (svc.input && svc.input.method) || "GET",
+          path: (svc.input && (svc.input.full_path || svc.input.path)) || "",
+          tags: (svc.swagger && svc.swagger.tags) || [],
+          summary: (svc.swagger && svc.swagger.summary) || "",
+          description: (svc.swagger && svc.swagger.description) || "",
+          backends: svc.backends || [],
+          raw: svc,
+        });
+      });
+    });
+
+    renderCatalogList();
+    renderCatalogFilters();
+    renderGlobalStats();
+
+    document.getElementById("catalogEmptyState").style.display = catalogs.length ? "none" : "block";
+    document.getElementById("catalogResultsWrap").style.display = catalogs.length ? "block" : "none";
+    document.getElementById("catalogFiltersPanel").style.display = (catalogs.length && activeTab === "catalog") ? "block" : "none";
+    document.getElementById("catalogActions").style.display = catalogs.length ? "flex" : "none";
+    document.getElementById("graphEmptyOverlay").style.display = catalogs.length ? "none" : "flex";
+    document.getElementById("graphControlsPanel").style.display = (catalogs.length && activeTab === "graph") ? "block" : "none";
+
+    applyCatalogFilters();
+
+    graphDirty = true;
+    if(activeTab === "graph" && catalogs.length){
+      resizeCanvas();
+      setGraphMode(graphMode);
+      graphDirty = false;
+    }
+  }
+
+  function visibleServices(){
+    var visibleCatIds = new Set(catalogs.filter(function(c){ return c.visible !== false; }).map(function(c){ return c.id; }));
+    return services.filter(function(s){ return visibleCatIds.has(s.catalogId); });
+  }
+
+  // ---- Graph derivation: mirrors ace_service_catalog.py's catalog_builder.build_dependency_graph(),
+  // but scoped per-catalog for service/flow/backend nodes (so identically-named
+  // flows in two different uploaded catalogs never collide), while backend_system
+  // aggregation (used by the Simplified view) groups by name globally — on
+  // purpose, so "which of my APIs all depend on T24" is visible across catalogs.
+  function buildFullGraphFromCatalogs(){
+    var nodesMap = new Map();
+    var edges = [];
+    function addNode(id, type, attrs){
+      if(!nodesMap.has(id)) nodesMap.set(id, Object.assign({ id:id, type:type }, attrs));
+    }
+
+    visibleServices().forEach(function(s){
+      var impl = (s.raw && s.raw.implementation) || {};
+      var catId = s.catalogId;
+      var serviceId = "service:" + catId + ":" + s.service_name;
+      addNode(serviceId, "service", { method: s.method, path: s.path, catalogName: s.catalogName });
+
+      var rootFlowName = impl.subflow_name;
+      var rootFlowId = null;
+      if(rootFlowName){
+        rootFlowId = "flow:" + catId + ":" + rootFlowName;
+        addNode(rootFlowId, "flow", { subflow_type: impl.subflow_type, catalogName: s.catalogName });
+        edges.push({ source: serviceId, target: rootFlowId, type: "implements", confidence: "high" });
+      }
+
+      (impl.downstream_calls || []).forEach(function(dc){
+        if(!dc.to_flow || !dc.from_flow) return;
+        var fromId = "flow:" + catId + ":" + dc.from_flow;
+        var toId = "flow:" + catId + ":" + dc.to_flow;
+        addNode(fromId, "flow", { catalogName: s.catalogName });
+        addNode(toId, "flow", { catalogName: s.catalogName });
+        edges.push({ source: fromId, target: toId, type: dc.call_type || "subflow", confidence: dc.confidence, evidence: dc.evidence, depth: dc.depth });
+      });
+
+      (s.backends || []).forEach(function(b){
+        var backendId = "backend:" + catId + ":" + (b.backend_system||"UNKNOWN") + ":" + (b.node_name||"") + ":" + (b.backend_source_flow||"");
+        addNode(backendId, "backend", {
+          protocol: b.protocol, backend_system: b.backend_system, url: b.url,
+          host: b.host, port: b.port, resolution: b.resolution, catalogName: s.catalogName,
+        });
+        var srcFlowName = b.backend_source_flow || rootFlowName;
+        if(srcFlowName){
+          var srcFlowId = "flow:" + catId + ":" + srcFlowName;
+          addNode(srcFlowId, "flow", { catalogName: s.catalogName });
+          edges.push({ source: srcFlowId, target: backendId, type: "backend_call", confidence: b.confidence, resolution: b.resolution });
+        }
+      });
+    });
+
+    var seen = new Set();
+    var dedupedEdges = edges.filter(function(e){
+      var k = e.source + "|" + e.target + "|" + e.type;
+      if(seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return { nodes: Array.from(nodesMap.values()), edges: dedupedEdges };
+  }
+
+  function buildSimplifiedGraph(full){
+    var nodeById = new Map(full.nodes.map(function(n){ return [n.id, n]; }));
+    var outEdges = new Map();
+    full.edges.forEach(function(e){
+      if(e.type === "subflow" || e.type === "callable_flow" || e.type === "backend_call"){
+        if(!outEdges.has(e.source)) outEdges.set(e.source, []);
+        outEdges.get(e.source).push(e);
+      }
+    });
+    var implementsEdges = full.edges.filter(function(e){ return e.type === "implements"; });
+    var svcNodes = full.nodes.filter(function(n){ return n.type === "service"; });
+
+    var systems = new Map();
+    var edgeSet = new Map();
+
+    svcNodes.forEach(function(svc){
+      var implEdge = implementsEdges.filter(function(e){ return e.source === svc.id; })[0];
+      if(!implEdge) return;
+      var visited = new Set([implEdge.target]);
+      var queue = [implEdge.target];
+      var reached = new Set();
+      while(queue.length){
+        var cur = queue.shift();
+        var outs = outEdges.get(cur) || [];
+        for(var i=0;i<outs.length;i++){
+          var e = outs[i];
+          if(e.type === "backend_call"){
+            reached.add(e.target);
+          }else if(!visited.has(e.target)){
+            visited.add(e.target);
+            queue.push(e.target);
+          }
+        }
+      }
+      reached.forEach(function(backendId){
+        var bNode = nodeById.get(backendId);
+        if(!bNode) return;
+        var sysName = bNode.backend_system || "UNKNOWN";
+        var sysId = "system:" + sysName;
+        if(!systems.has(sysId)){
+          systems.set(sysId, { id: sysId, type: "backend_system", backend_system: sysName, count: 0, protocols: new Set() });
+        }
+        var agg = systems.get(sysId);
+        agg.count++;
+        if(bNode.protocol) agg.protocols.add(bNode.protocol);
+        var key = svc.id + "|" + sysId;
+        if(!edgeSet.has(key)) edgeSet.set(key, { source: svc.id, target: sysId, type: "reaches_backend_system" });
+      });
+    });
+
+    var nodesOut = svcNodes.map(function(n){ return Object.assign({}, n); });
+    systems.forEach(function(v){
+      nodesOut.push({ id: v.id, type: v.type, backend_system: v.backend_system, count: v.count, protocols: Array.from(v.protocols) });
+    });
+    return { nodes: nodesOut, edges: Array.from(edgeSet.values()) };
+  }
+
+  // ======================================================================
+  // Catalog tab: sidebar list, filters, table, drawer
+  // ======================================================================
+  function renderCatalogList(){
+    var el = document.getElementById("catalogList");
+    if(!catalogs.length){ el.innerHTML = ""; return; }
+    el.innerHTML = catalogs.map(function(c){
+      var count = (c.data.services || []).length;
+      var kb = c.size ? Math.round(c.size/1024) + " KB" : "";
+      return '<div class="catalog-item">' +
+        '<input type="checkbox" data-cat="' + c.id + '" ' + (c.visible !== false ? "checked" : "") + '>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div class="ci-name">' + escapeHtml(c.data.catalog_name || c.fileName) + '</div>' +
+          '<div class="ci-meta">' + count + ' services' + (kb ? " &middot; " + kb : "") + (c.data.catalog_version ? " &middot; v" + escapeHtml(c.data.catalog_version) : "") + '</div>' +
+        '</div>' +
+        '<button class="ci-remove" data-remove="' + c.id + '" title="Remove">&times;</button>' +
+      '</div>';
+    }).join("");
+
+    el.querySelectorAll("input[type=checkbox]").forEach(function(cb){
+      cb.addEventListener("change", function(){
+        var cat = catalogs.find(function(c){ return c.id === cb.getAttribute("data-cat"); });
+        if(cat){ cat.visible = cb.checked; persist(); applyCatalogFilters(); rebuildGraphInPlace(); }
+      });
+    });
+    el.querySelectorAll("[data-remove]").forEach(function(btn){
+      btn.addEventListener("click", function(){ removeCatalog(btn.getAttribute("data-remove")); });
+    });
+  }
+
+  function rebuildGraphInPlace(){
+    graphDirty = true;
+    if(activeTab === "graph" && catalogs.length){
+      resizeCanvas();
+      setGraphMode(graphMode);
+      graphDirty = false;
+    }
+  }
+
+  function renderCatalogFilters(){
+    var vs = visibleServices();
+
+    var methodCounts = {};
+    vs.forEach(function(s){ methodCounts[s.method] = (methodCounts[s.method]||0)+1; });
+    var methodOrder = ["GET","POST","PUT","PATCH","DELETE"];
+    Object.keys(methodCounts).forEach(function(m){ if(methodOrder.indexOf(m)===-1) methodOrder.push(m); });
+    var mEl = document.getElementById("methodChips");
+    mEl.innerHTML = methodOrder.filter(function(m){return methodCounts[m];}).map(function(m){
+      return '<span class="chip' + (catalogState.methods.has(m)?' active':'') + '" data-method="' + m + '">' + m + '<span class="n">' + methodCounts[m] + '</span></span>';
+    }).join("");
+    mEl.querySelectorAll("[data-method]").forEach(function(chip){
+      chip.addEventListener("click", function(){
+        var m = chip.getAttribute("data-method");
+        if(catalogState.methods.has(m)) catalogState.methods.delete(m); else catalogState.methods.add(m);
+        renderCatalogFilters(); applyCatalogFilters();
+      });
+    });
+
+    var tagCounts = {};
+    vs.forEach(function(s){ (s.tags||[]).forEach(function(t){ tagCounts[t]=(tagCounts[t]||0)+1; }); });
+    var tagEl = document.getElementById("tagFacets");
+    var tagKeys = Object.keys(tagCounts).sort();
+    tagEl.innerHTML = tagKeys.length ? tagKeys.map(function(t){
+      return '<label class="facet-row"><input type="checkbox" data-tag="' + escapeAttr(t) + '" ' + (catalogState.tags.has(t)?"checked":"") + '>' + escapeHtml(t) + '<span class="fc-count">' + tagCounts[t] + '</span></label>';
+    }).join("") : '<div class="no-data">No tags found</div>';
+    tagEl.querySelectorAll("[data-tag]").forEach(function(cb){
+      cb.addEventListener("change", function(){
+        var t = cb.getAttribute("data-tag");
+        if(cb.checked) catalogState.tags.add(t); else catalogState.tags.delete(t);
+        applyCatalogFilters();
+      });
+    });
+
+    var beCounts = {};
+    vs.forEach(function(s){ (s.backends||[]).forEach(function(b){ var sys=b.backend_system||"Unknown"; beCounts[sys]=(beCounts[sys]||0)+1; }); });
+    var beEl = document.getElementById("backendFacets");
+    var beKeys = Object.keys(beCounts).sort();
+    beEl.innerHTML = beKeys.length ? beKeys.map(function(b){
+      return '<label class="facet-row"><input type="checkbox" data-backend="' + escapeAttr(b) + '" ' + (catalogState.backends.has(b)?"checked":"") + '>' + escapeHtml(b) + '<span class="fc-count">' + beCounts[b] + '</span></label>';
+    }).join("") : '<div class="no-data">No backends found</div>';
+    beEl.querySelectorAll("[data-backend]").forEach(function(cb){
+      cb.addEventListener("change", function(){
+        var b = cb.getAttribute("data-backend");
+        if(cb.checked) catalogState.backends.add(b); else catalogState.backends.delete(b);
+        applyCatalogFilters();
+      });
+    });
+  }
+
+  document.getElementById("resetFiltersBtn").addEventListener("click", function(){
+    catalogState.methods.clear(); catalogState.tags.clear(); catalogState.backends.clear();
+    document.getElementById("catalogSearchInput").value = "";
+    catalogState.search = "";
+    renderCatalogFilters(); applyCatalogFilters();
+  });
+
+  function applyCatalogFilters(){
+    var vs = visibleServices();
+    var q = catalogState.search.trim().toLowerCase();
+
+    var filtered = vs.filter(function(s){
+      if(catalogState.methods.size && !catalogState.methods.has(s.method)) return false;
+      if(catalogState.tags.size){
+        var hasTag = (s.tags||[]).some(function(t){ return catalogState.tags.has(t); });
+        if(!hasTag) return false;
+      }
+      if(catalogState.backends.size){
+        var hasBe = (s.backends||[]).some(function(b){ return catalogState.backends.has(b.backend_system||"Unknown"); });
+        if(!hasBe) return false;
+      }
+      if(q){
+        var hay = [
+          s.service_name, s.path, s.summary, s.description,
+          (s.tags||[]).join(" "),
+          (s.backends||[]).map(function(b){return b.backend_system+" "+b.node_name+" "+b.url;}).join(" "),
+        ].join(" ").toLowerCase();
+        if(hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+
+    renderTable(filtered);
+  }
+
+  function renderTable(list){
+    var body = document.getElementById("tableBody");
+    document.getElementById("resultsCount").textContent = list.length + " service" + (list.length===1?"":"s");
+    if(!list.length){
+      body.innerHTML = '<tr><td colspan="5"><div class="empty-state" style="padding:30px 10px;"><h3>No matches</h3><p>Try adjusting your search or filters.</p></div></td></tr>';
+      return;
+    }
+    body.innerHTML = list.map(function(s){
+      return '<tr data-key="' + s.key + '">' +
+        '<td><span class="method-badge m-' + escapeAttr(s.method) + '">' + escapeHtml(s.method) + '</span></td>' +
+        '<td>' +
+          '<div class="svc-name">' + escapeHtml(s.service_name) + '</div>' +
+          '<div class="path-cell">' + escapeHtml(s.path) + '</div>' +
+          (s.summary ? '<div class="svc-summary">' + escapeHtml(s.summary) + '</div>' : '') +
+        '</td>' +
+        '<td>' + (s.tags||[]).map(function(t){return '<span class="tag-pill">'+escapeHtml(t)+'</span>';}).join("") + '</td>' +
+        '<td>' + (s.backends ? s.backends.length : 0) + '</td>' +
+        '<td><span class="src-pill" title="' + escapeAttr(s.fileName) + '">' + escapeHtml(truncate(s.catalogName, 16)) + '</span></td>' +
+      '</tr>';
+    }).join("");
+
+    body.querySelectorAll("tr[data-key]").forEach(function(row){
+      row.addEventListener("click", function(){ openDetail(row.getAttribute("data-key")); });
+    });
+  }
+
+  var searchDebounce;
+  document.getElementById("catalogSearchInput").addEventListener("input", function(e){
+    clearTimeout(searchDebounce);
+    var val = e.target.value;
+    searchDebounce = setTimeout(function(){ catalogState.search = val; applyCatalogFilters(); }, 120);
+  });
+
+  function renderGlobalStats(){
+    var el = document.getElementById("globalStats");
+    if(!catalogs.length){ el.innerHTML = ""; return; }
+    var totalBackends = services.reduce(function(a,s){ return a + (s.backends?s.backends.length:0); }, 0);
+    el.innerHTML =
+      '<span class="stat-chip">Catalogs <b>' + catalogs.length + '</b></span>' +
+      '<span class="stat-chip">Services <b>' + services.length + '</b></span>' +
+      '<span class="stat-chip">Backend calls <b>' + totalBackends + '</b></span>';
+  }
+
+  // ---- Detail drawer ----
+  function openDetail(key){
+    var s = services.find(function(x){ return x.key === key; });
+    if(!s) return;
+    currentDrawerKey = key;
+    var svc = s.raw;
+    var input = svc.input || {};
+    var swagger = svc.swagger || {};
+    var impl = svc.implementation || {};
+    var backends = svc.backends || [];
+
+    document.getElementById("drawerMethod").innerHTML = '<span class="method-badge m-' + escapeAttr(s.method) + '">' + escapeHtml(s.method) + '</span>';
+    document.getElementById("drawerName").textContent = s.service_name;
+    document.getElementById("drawerPath").textContent = s.path;
+    document.getElementById("drawerSummary").textContent = swagger.summary || "";
+
+    var html = "";
+    html += '<div class="dsection"><h4>Overview</h4><dl class="kv-grid">' +
+      '<dt>Description</dt><dd>' + (swagger.description ? escapeHtml(swagger.description) : '<span class="no-data">None</span>') + '</dd>' +
+      '<dt>Tags</dt><dd>' + ((s.tags||[]).map(function(t){return '<span class="tag-pill">'+escapeHtml(t)+'</span>';}).join("") || '<span class="no-data">None</span>') + '</dd>' +
+      '<dt>Protocol</dt><dd>' + escapeHtml(input.protocol||"") + '</dd>' +
+      '<dt>Consumes</dt><dd>' + escapeHtml((input.consumes||[]).join(", ")) + '</dd>' +
+      '<dt>Produces</dt><dd>' + escapeHtml((input.produces||[]).join(", ")) + '</dd>' +
+      '<dt>Schemes</dt><dd>' + escapeHtml((input.schemes||[]).join(", ")) + '</dd>' +
+      '<dt>Source catalog</dt><dd>' + escapeHtml(s.catalogName) + ' <span class="no-data">(' + escapeHtml(s.fileName) + ')</span></dd>' +
+    '</dl></div>';
+
+    var params = input.parameters || [];
+    html += '<div class="dsection"><h4>Parameters (' + params.length + ')</h4>';
+    if(params.length){
+      html += '<table class="mini-table"><thead><tr><th>Name</th><th>In</th><th>Type</th><th>Req.</th><th>Details</th></tr></thead><tbody>';
+      params.forEach(function(p){
+        var details = [];
+        if(p.description) details.push(escapeHtml(p.description));
+        if(p.enum) details.push('enum: ' + p.enum.map(function(v){return '<code class="inline">'+escapeHtml(String(v))+'</code>';}).join(" "));
+        if(p.format) details.push('format: <code class="inline">'+escapeHtml(p.format)+'</code>');
+        if(p.default !== undefined) details.push('default: <code class="inline">'+escapeHtml(String(p.default))+'</code>');
+        if(p.schema_ref) details.push('ref: <code class="inline">'+escapeHtml(p.schema_ref)+'</code>');
+        if(p.schema) details.push('inline object schema (see request body below)');
+        html += '<tr><td><code class="inline">' + escapeHtml(p.name||"") + '</code></td>' +
+          '<td>' + escapeHtml(p.in||"") + '</td>' +
+          '<td>' + escapeHtml(p.type||"") + '</td>' +
+          '<td>' + (p.required ? '<span class="req-yes">required</span>' : '<span class="req-no">optional</span>') + '</td>' +
+          '<td>' + (details.join("<br>") || '<span class="no-data">&mdash;</span>') + '</td></tr>';
+      });
+      html += '</tbody></table>';
+    }else{
+      html += '<div class="no-data">No parameters</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="dsection"><h4>Request Body Schema</h4>' + renderSchemaBlock(swagger.request_schema) + '</div>';
+
+    var resp = swagger.response_schemas || {};
+    var respKeys = Object.keys(resp);
+    html += '<div class="dsection"><h4>Response Schemas</h4>';
+    if(respKeys.length){
+      respKeys.forEach(function(code){
+        html += '<div style="margin-bottom:10px;"><div style="font-size:11.5px;font-weight:700;color:var(--text-faint);margin-bottom:4px;">HTTP ' + escapeHtml(code) + '</div>' + renderSchemaBlock(resp[code]) + '</div>';
+      });
+    }else{
+      html += '<div class="no-data">No response schemas documented</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="dsection"><h4>Implementation</h4><dl class="kv-grid">' +
+      '<dt>Flow</dt><dd>' + escapeHtml(impl.flow_name||"") + '</dd>' +
+      '<dt>Subflow</dt><dd>' + escapeHtml(impl.subflow_name||"") + '</dd>' +
+      '<dt>Subflow type</dt><dd>' + escapeHtml(impl.subflow_type||"") + '</dd>' +
+      '<dt>Matched in Broker XML</dt><dd>' + (impl.matched_in_broker_xml ? '<span class="badge-ok">Yes</span>' : '<span class="badge-no">No</span>') + '</dd>' +
+      '<dt>Recursive calls</dt><dd>' + (impl.recursive_flow_count || 0) + '</dd>' +
+    '</dl></div>';
+
+    html += '<div class="dsection"><h4>Backend Systems (' + backends.length + ')</h4>';
+    if(backends.length){
+      backends.forEach(function(b){
+        html += '<div class="backend-card">' +
+          '<div class="bc-top"><span class="bc-node">' + escapeHtml(b.node_name||"") + '</span><span class="bc-sys">' + escapeHtml(b.backend_system||"") + '</span></div>' +
+          '<div class="bc-url"><span class="proto-pill">' + escapeHtml(b.protocol||"") + '</span>' + escapeHtml(b.url||"") + '</div>' +
+          '<div style="color:var(--text-faint);margin-top:4px;">host: <code class="inline">' + escapeHtml(b.host||"") + '</code>' + (b.port ? '  &middot;  port: <code class="inline">'+escapeHtml(String(b.port))+'</code>' : '') + '</div>' +
+        '</div>';
+      });
+    }else{
+      html += '<div class="no-data">No backend systems recorded</div>';
+    }
+    html += '</div>';
+
+    document.getElementById("drawerBody").innerHTML = html;
+    document.getElementById("overlay").classList.add("show");
+    document.getElementById("drawer").classList.add("show");
+  }
+
+  function renderSchemaBlock(schema){
+    if(schema === null || schema === undefined) return '<div class="no-data">None</div>';
+    if(typeof schema === "string") return '<div class="no-data">Reference: <code class="inline">' + escapeHtml(schema) + '</code></div>';
+    return '<pre class="json-view">' + syntaxHighlight(schema) + '</pre>';
+  }
+
+  function syntaxHighlight(obj){
+    var json = JSON.stringify(obj, null, 2);
+    json = escapeHtml(json);
+    return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, function(match){
+      var cls = "jn";
+      if(/^"/.test(match)) cls = /:$/.test(match) ? "jk" : "js";
+      else if(/true|false|null/.test(match)) cls = "jb";
+      return '<span class="' + cls + '">' + match + '</span>';
+    });
+  }
+
+  document.getElementById("drawerClose").addEventListener("click", closeDrawer);
+  document.getElementById("overlay").addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", function(e){ if(e.key === "Escape") closeDrawer(); });
+  function closeDrawer(){
+    document.getElementById("overlay").classList.remove("show");
+    document.getElementById("drawer").classList.remove("show");
+  }
+
+  document.getElementById("viewInGraphBtn").addEventListener("click", function(){
+    if(!currentDrawerKey) return;
+    viewServiceInGraph(currentDrawerKey);
+  });
+
+  document.getElementById("exportBtn").addEventListener("click", function(){
+    var merged = {
+      catalog_name: "Merged Catalog",
+      merged_from: catalogs.map(function(c){ return c.fileName; }),
+      generated_at: new Date().toISOString(),
+      services: services.map(function(s){ return s.raw; }),
+    };
+    var blob = new Blob([JSON.stringify(merged, null, 2)], {type:"application/json"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "merged_service_catalog.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+
+  document.getElementById("clearAllBtn").addEventListener("click", clearAll);
+
+  var dropzone = document.getElementById("dropzone");
+  var fileInput = document.getElementById("fileInput");
+  fileInput.addEventListener("change", function(e){ handleFiles(e.target.files); fileInput.value = ""; });
+  ["dragenter","dragover"].forEach(function(evt){
+    dropzone.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); dropzone.classList.add("dragover"); });
+  });
+  ["dragleave","drop"].forEach(function(evt){
+    dropzone.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); dropzone.classList.remove("dragover"); });
+  });
+  dropzone.addEventListener("drop", function(e){
+    if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  });
+
+  // ======================================================================
+  // Graph tab: force-directed canvas view
+  // ======================================================================
+  var canvas = document.getElementById("graphCanvas");
+  var ctx = canvas.getContext("2d");
+  var wrap = document.getElementById("canvasWrap");
+
+  var fullGraph = null, simplifiedGraph = null;
+  var graphMode = "simplified";
+  var activeGraph = null;
+  var nodeIndex = new Map();
+  var adjacency = new Map();
+
+  var view = { scale: 1, ox: 0, oy: 0 };
+  var selectedId = null;
+  var hoverId = null;
+  var graphSearchQuery = "";
+  var dragNode = null;
+  var panning = false;
+  var lastMouse = { x: 0, y: 0 };
+  var nodeFilter = { service: true, flow: true, backend: true, backend_system: true };
+  var edgeFilter = { implements: true, subflow: true, callable_flow: true, backend_call: true, reaches_backend_system: true };
+
+  document.getElementById("viewModeSeg").addEventListener("click", function(e){
+    var btn = e.target.closest("button[data-mode]");
+    if(!btn) return;
+    document.querySelectorAll("#viewModeSeg button").forEach(function(b){ b.classList.remove("on"); });
+    btn.classList.add("on");
+    setGraphMode(btn.getAttribute("data-mode"));
+  });
+
+  function setGraphMode(m){
+    graphMode = m;
+    fullGraph = buildFullGraphFromCatalogs();
+    simplifiedGraph = buildSimplifiedGraph(fullGraph);
+    if(!fullGraph.nodes.length) return;
+    var source = graphMode === "simplified" ? simplifiedGraph : fullGraph;
+    buildActiveGraph(source);
+    renderGraphFilters();
+    renderLegend();
+    fitView();
+    startSimulation(true);
+  }
+
+  function buildActiveGraph(source){
+    var w = canvas.width / (window.devicePixelRatio||1), h = canvas.height / (window.devicePixelRatio||1);
+    var n = source.nodes.length;
+    var r = Math.max(Math.min(w,h) * 0.35, Math.sqrt(n) * 26);
+    activeGraph = {
+      nodes: source.nodes.map(function(nd, i){
+        var angle = (i / n) * Math.PI * 2;
+        return Object.assign({}, nd, {
+          x: w/2 + Math.cos(angle)*r + (Math.random()-0.5)*30,
+          y: h/2 + Math.sin(angle)*r + (Math.random()-0.5)*30,
+          vx: 0, vy: 0, pinned: false,
+        });
+      }),
+      edges: source.edges.slice(),
+    };
+    nodeIndex = new Map(activeGraph.nodes.map(function(n){ return [n.id, n]; }));
+    adjacency = new Map();
+    activeGraph.edges.forEach(function(e){
+      if(!adjacency.has(e.source)) adjacency.set(e.source, []);
+      if(!adjacency.has(e.target)) adjacency.set(e.target, []);
+      adjacency.get(e.source).push({ other: e.target, edge: e });
+      adjacency.get(e.target).push({ other: e.source, edge: e });
+    });
+    updateGraphStats();
+  }
+
+  function updateGraphStats(){
+    var vis = visibleGraph();
+    document.getElementById("statsBar").innerHTML =
+      '<span>Nodes <b>' + vis.nodes.length + '</b> / ' + activeGraph.nodes.length + '</span>' +
+      '<span>Edges <b>' + vis.edges.length + '</b> / ' + activeGraph.edges.length + '</span>';
+    document.getElementById("legend").style.display = "block";
+    document.getElementById("statsBar").style.display = "flex";
+  }
+
+  function renderGraphFilters(){
+    var typesPresent = {};
+    activeGraph.nodes.forEach(function(n){ typesPresent[n.type] = (typesPresent[n.type]||0)+1; });
+    var nEl = document.getElementById("nodeFilters");
+    nEl.innerHTML = Object.keys(typesPresent).sort().map(function(t){
+      return '<label class="filter-row"><input type="checkbox" data-nf="'+t+'" '+(nodeFilter[t]!==false?"checked":"")+'>' +
+        '<span class="fdot" style="background:'+(TYPE_COLORS[t]||"#999")+'"></span>' + t + ' (' + typesPresent[t] + ')</label>';
+    }).join("");
+    nEl.querySelectorAll("[data-nf]").forEach(function(cb){
+      cb.addEventListener("change", function(){ nodeFilter[cb.getAttribute("data-nf")] = cb.checked; updateGraphStats(); if(!simRunning) draw(visibleGraph()); });
+    });
+
+    var edgeTypesPresent = {};
+    activeGraph.edges.forEach(function(e){ edgeTypesPresent[e.type] = (edgeTypesPresent[e.type]||0)+1; });
+    var eEl = document.getElementById("edgeFilters");
+    eEl.innerHTML = Object.keys(edgeTypesPresent).sort().map(function(t){
+      return '<label class="filter-row"><input type="checkbox" data-ef="'+t+'" '+(edgeFilter[t]!==false?"checked":"")+'>' +
+        '<span class="legend-line" style="border-color:'+(EDGE_COLORS[t]||"#999")+'"></span> ' + t + ' (' + edgeTypesPresent[t] + ')</label>';
+    }).join("");
+    eEl.querySelectorAll("[data-ef]").forEach(function(cb){
+      cb.addEventListener("change", function(){ edgeFilter[cb.getAttribute("data-ef")] = cb.checked; updateGraphStats(); if(!simRunning) draw(visibleGraph()); });
+    });
+  }
+
+  function visibleGraph(){
+    var nodes = activeGraph.nodes.filter(function(n){ return nodeFilter[n.type] !== false; });
+    var visibleIds = new Set(nodes.map(function(n){ return n.id; }));
+    var edges = activeGraph.edges.filter(function(e){
+      return edgeFilter[e.type] !== false && visibleIds.has(e.source) && visibleIds.has(e.target);
+    });
+    return { nodes: nodes, edges: edges };
+  }
+
+  function renderLegend(){
+    var typesPresent = new Set(activeGraph.nodes.map(function(n){ return n.type; }));
+    var edgeTypesPresent = new Set(activeGraph.edges.map(function(e){ return e.type; }));
+    var html = '<h4>Nodes</h4>';
+    typesPresent.forEach(function(t){
+      html += '<div class="legend-row"><span class="legend-dot" style="background:'+(TYPE_COLORS[t]||"#999")+'"></span>' + t + '</div>';
+    });
+    html += '<h4 style="margin-top:8px;">Edges</h4>';
+    edgeTypesPresent.forEach(function(t){
+      html += '<div class="legend-row"><span class="legend-line" style="border-color:'+(EDGE_COLORS[t]||"#999")+'"></span>' + t + '</div>';
+    });
+    document.getElementById("legend").innerHTML = html;
+  }
+
+  var simRunning = false;
+  var simTicks = 0;
+  function startSimulation(reheat){
+    if(reheat) simTicks = 0;
+    if(simRunning) return;
+    simRunning = true;
+    document.getElementById("loadingOverlay").classList.add("show");
+    requestAnimationFrame(tick);
+  }
+
+  function tick(){
+    var vis = visibleGraph();
+    var alpha = Math.max(0, 1 - simTicks/220);
+    stepPhysics(vis, alpha);
+    if(simTicks > 0 && simTicks % 30 === 0) fitViewSilent();
+    draw(vis);
+    simTicks++;
+    if(alpha > 0.005 && simTicks < 400){
+      requestAnimationFrame(tick);
+    }else{
+      simRunning = false;
+      document.getElementById("loadingOverlay").classList.remove("show");
+      fitView();
+    }
+  }
+
+  var MAX_FORCE = 2200;
+  var MAX_SPEED = 60;
+  function clampVelocity(nd){
+    var speed = Math.sqrt(nd.vx*nd.vx + nd.vy*nd.vy);
+    if(speed > MAX_SPEED){ nd.vx = nd.vx/speed*MAX_SPEED; nd.vy = nd.vy/speed*MAX_SPEED; }
+  }
+
+  function stepPhysics(vis, alpha){
+    var nodes = vis.nodes;
+    var n = nodes.length;
+    if(n === 0) return;
+    var w = canvas.width / (window.devicePixelRatio||1), h = canvas.height / (window.devicePixelRatio||1);
+    var repulse = n > 400 ? 1400 : (n > 150 ? 2000 : 3200);
+
+    for(var i=0;i<n;i++){
+      var a = nodes[i];
+      if(a.pinned) continue;
+      var fx = 0, fy = 0;
+      for(var j=0;j<n;j++){
+        if(i===j) continue;
+        var b = nodes[j];
+        var dx = a.x - b.x, dy = a.y - b.y;
+        var d2 = dx*dx + dy*dy + 1;
+        var d = Math.sqrt(d2);
+        var f = Math.min(repulse / d2, MAX_FORCE);
+        fx += (dx/d) * f;
+        fy += (dy/d) * f;
+      }
+      fx += (w/2 - a.x) * 0.002;
+      fy += (h/2 - a.y) * 0.002;
+      a.vx = (a.vx + fx * 0.02) * 0.82;
+      a.vy = (a.vy + fy * 0.02) * 0.82;
+      clampVelocity(a);
+    }
+    vis.edges.forEach(function(e){
+      var a = nodeIndex.get(e.source), b = nodeIndex.get(e.target);
+      if(!a || !b) return;
+      var dx = b.x - a.x, dy = b.y - a.y;
+      var d = Math.sqrt(dx*dx+dy*dy) + 0.01;
+      var target = 90;
+      var f = Math.max(-MAX_FORCE, Math.min(MAX_FORCE, (d - target) * 0.02));
+      var fx = (dx/d)*f, fy = (dy/d)*f;
+      if(!a.pinned){ a.vx += fx*alpha; a.vy += fy*alpha; clampVelocity(a); }
+      if(!b.pinned){ b.vx -= fx*alpha; b.vy -= fy*alpha; clampVelocity(b); }
+    });
+    for(i=0;i<n;i++){
+      var nd = nodes[i];
+      if(nd.pinned) continue;
+      nd.x += nd.vx * alpha;
+      nd.y += nd.vy * alpha;
+    }
+  }
+
+  function resizeCanvas(){
+    var dpr = window.devicePixelRatio || 1;
+    var rect = wrap.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.style.width = rect.width + "px";
+    canvas.style.height = rect.height + "px";
+  }
+
+  function nodeRadius(n){
+    if(n.type === "backend_system") return 14 + Math.min(14, (n.count||1));
+    if(n.type === "service") return 8;
+    if(n.type === "backend") return 6;
+    return 5;
+  }
+
+  function draw(vis){
+    var dpr = window.devicePixelRatio || 1;
+    ctx.save();
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,canvas.width/dpr, canvas.height/dpr);
+    ctx.translate(view.ox, view.oy);
+    ctx.scale(view.scale, view.scale);
+
+    var neighborSet = null;
+    if(selectedId){
+      neighborSet = new Set([selectedId]);
+      (adjacency.get(selectedId)||[]).forEach(function(l){ neighborSet.add(l.other); });
+    }
+    var q = graphSearchQuery.trim().toLowerCase();
+    var matchSet = null;
+    if(q){
+      matchSet = new Set();
+      activeGraph.nodes.forEach(function(n){ if(labelFor(n).toLowerCase().indexOf(q)!==-1) matchSet.add(n.id); });
+    }
+
+    vis.edges.forEach(function(e){
+      var a = nodeIndex.get(e.source), b = nodeIndex.get(e.target);
+      if(!a || !b) return;
+      var dim = neighborSet && !(neighborSet.has(a.id) && neighborSet.has(b.id));
+      ctx.strokeStyle = EDGE_COLORS[e.type] || "#ccc";
+      ctx.globalAlpha = dim ? 0.08 : 0.55;
+      ctx.lineWidth = 1 / view.scale;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+
+    vis.nodes.forEach(function(n){
+      var r = nodeRadius(n);
+      var dim = neighborSet && !neighborSet.has(n.id);
+      var matched = matchSet && matchSet.has(n.id);
+      var emphasized = n.id === selectedId || n.id === hoverId || matched;
+      var color = TYPE_COLORS[n.type] || "#8899aa";
+
+      ctx.globalAlpha = dim ? 0.22 : 1;
+      if(emphasized){ ctx.shadowColor = color; ctx.shadowBlur = 8 / view.scale; }
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      if(emphasized){
+        ctx.lineWidth = 2 / view.scale;
+        ctx.strokeStyle = matched ? UI.accent2 : UI.text;
+        ctx.stroke();
+      }
+      var showLabel = n.type === "backend_system" || emphasized || view.scale > 1.4;
+      if(showLabel){
+        ctx.globalAlpha = dim ? 0.3 : 1;
+        ctx.font = (11/Math.max(view.scale,0.6)) + 'px "Cascadia Code", Consolas, monospace';
+        ctx.fillStyle = emphasized ? UI.text : UI.textDim;
+        ctx.textBaseline = "middle";
+        ctx.fillText(labelFor(n), n.x + r + 5/view.scale, n.y);
+      }
+    });
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  function labelFor(n){
+    if(n.type === "backend_system") return n.backend_system + " (" + n.count + ")";
+    if(n.type === "service") return n.id.split(":").slice(2).join(":");
+    if(n.type === "backend") return (n.backend_system||"") + ": " + n.id.split(":").slice(3).join(":");
+    return n.id.split(":").slice(2).join(":");
+  }
+
+  function worldPos(clientX, clientY){
+    var rect = canvas.getBoundingClientRect();
+    return { x: (clientX - rect.left - view.ox) / view.scale, y: (clientY - rect.top - view.oy) / view.scale };
+  }
+
+  function nodeAt(clientX, clientY){
+    if(!activeGraph) return null;
+    var p = worldPos(clientX, clientY);
+    var vis = visibleGraph();
+    var found = null, bestD = Infinity;
+    vis.nodes.forEach(function(n){
+      var r = nodeRadius(n) + 3;
+      var dx = n.x-p.x, dy = n.y-p.y;
+      var d = Math.sqrt(dx*dx+dy*dy);
+      if(d <= r && d < bestD){ found = n; bestD = d; }
+    });
+    return found;
+  }
+
+  canvas.addEventListener("mousedown", function(e){
+    var n = nodeAt(e.clientX, e.clientY);
+    if(n){ dragNode = n; n.pinned = true; canvas.classList.add("dragging"); }
+    else{ panning = true; canvas.classList.add("dragging"); }
+    lastMouse = { x: e.clientX, y: e.clientY };
+  });
+  window.addEventListener("mousemove", function(e){
+    if(activeTab !== "graph") return;
+    if(dragNode){
+      var p = worldPos(e.clientX, e.clientY);
+      dragNode.x = p.x; dragNode.y = p.y;
+      if(!simRunning) draw(visibleGraph());
+    }else if(panning){
+      view.ox += (e.clientX - lastMouse.x);
+      view.oy += (e.clientY - lastMouse.y);
+      lastMouse = { x: e.clientX, y: e.clientY };
+      if(!simRunning) draw(visibleGraph());
+    }else if(activeGraph){
+      var hn = nodeAt(e.clientX, e.clientY);
+      var newHover = hn ? hn.id : null;
+      if(newHover !== hoverId){ hoverId = newHover; if(!simRunning) draw(visibleGraph()); }
+    }
+  });
+  window.addEventListener("mouseup", function(){ dragNode = null; panning = false; canvas.classList.remove("dragging"); });
+
+  canvas.addEventListener("click", function(e){
+    if(Math.abs(e.movementX||0) > 3 || Math.abs(e.movementY||0) > 3) return;
+    var n = nodeAt(e.clientX, e.clientY);
+    selectGraphNode(n ? n.id : null);
+  });
+
+  canvas.addEventListener("wheel", function(e){
+    e.preventDefault();
+    var rect = canvas.getBoundingClientRect();
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var factor = e.deltaY < 0 ? 1.1 : 0.9;
+    var newScale = Math.min(6, Math.max(0.12, view.scale * factor));
+    view.ox = mx - (mx - view.ox) * (newScale/view.scale);
+    view.oy = my - (my - view.oy) * (newScale/view.scale);
+    view.scale = newScale;
+    if(!simRunning) draw(visibleGraph());
+  }, { passive:false });
+
+  function selectGraphNode(id){
+    selectedId = id;
+    renderGraphDetail(id);
+    if(!simRunning) draw(visibleGraph());
+  }
+
+  function renderGraphDetail(id){
+    var panel = document.getElementById("detailPanel");
+    if(!id){ panel.innerHTML = '<div class="detail-empty">Click a node to see its details and connections.</div>'; return; }
+    var n = nodeIndex.get(id);
+    if(!n){ panel.innerHTML = '<div class="detail-empty">Node not found.</div>'; return; }
+    var color = TYPE_COLORS[n.type] || "#999";
+    var kv = "";
+    Object.keys(n).forEach(function(k){
+      if(["id","type","x","y","vx","vy","pinned"].indexOf(k) !== -1) return;
+      var v = n[k];
+      if(v === null || v === undefined || v === "") return;
+      if(Array.isArray(v)) v = v.join(", ");
+      kv += '<dt>' + k + '</dt><dd>' + escapeHtml(String(v)) + '</dd>';
+    });
+    var neighbors = (adjacency.get(id) || []).slice().sort(function(a,b){
+      return labelFor(nodeIndex.get(a.other)||{id:a.other,type:""}).localeCompare(labelFor(nodeIndex.get(b.other)||{id:b.other,type:""}));
+    });
+    var neighborHtml = neighbors.map(function(l){
+      var other = nodeIndex.get(l.other);
+      if(!other) return "";
+      return '<li data-goto="' + escapeAttr(other.id) + '"><span>' + escapeHtml(labelFor(other)) + '</span><span class="nl-type">' + l.edge.type + '</span></li>';
+    }).join("");
+
+    var crossNavHtml = "";
+    if(n.type === "service"){
+      crossNavHtml = '<button class="btn primary crossnav-btn" data-crossnav="service">📋 View in Service Catalog</button>';
+    }else if(n.type === "backend_system" || n.type === "backend"){
+      crossNavHtml = '<button class="btn primary crossnav-btn" data-crossnav="backend">📋 Find services using ' + escapeHtml(n.backend_system||"") + '</button>';
+    }
+
+    panel.innerHTML =
+      '<div class="detail-title">' + escapeHtml(labelFor(n)) + '</div>' +
+      '<span class="detail-type" style="background:' + color + '22;color:' + color + ';">' + n.type + '</span>' +
+      '<dl class="kv-grid" style="grid-template-columns:80px 1fr;">' + kv + '</dl>' +
+      crossNavHtml +
+      '<h4 style="font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-faint);margin:16px 0 6px;">' +
+        'Connections (' + neighbors.length + ')</h4>' +
+      '<ul class="neighbor-list">' + (neighborHtml || '<li class="detail-empty">None</li>') + '</ul>';
+
+    panel.querySelectorAll("[data-goto]").forEach(function(li){
+      li.addEventListener("click", function(){ selectGraphNode(li.getAttribute("data-goto")); centerOn(li.getAttribute("data-goto")); });
+    });
+    var crossBtn = panel.querySelector("[data-crossnav]");
+    if(crossBtn){
+      crossBtn.addEventListener("click", function(){
+        if(n.type === "service") viewServiceInCatalog(n.id);
+        else findBackendSystemInCatalog(n.backend_system);
+      });
+    }
+  }
+
+  function centerOn(id){
+    var n = nodeIndex.get(id);
+    if(!n) return;
+    var rect = canvas.getBoundingClientRect();
+    view.ox = rect.width/2 - n.x*view.scale;
+    view.oy = rect.height/2 - n.y*view.scale;
+    draw(visibleGraph());
+  }
+
+  var graphSearchDebounce;
+  document.getElementById("graphSearchInput").addEventListener("input", function(e){
+    clearTimeout(graphSearchDebounce);
+    var val = e.target.value;
+    graphSearchDebounce = setTimeout(function(){
+      graphSearchQuery = val;
+      if(!simRunning) draw(visibleGraph());
+      if(val.trim() && activeGraph){
+        var q = val.trim().toLowerCase();
+        var match = activeGraph.nodes.find(function(n){ return labelFor(n).toLowerCase().indexOf(q) !== -1; });
+        if(match) centerOn(match.id);
+      }
+    }, 150);
+  });
+
+  document.getElementById("resetViewBtn").addEventListener("click", fitView);
+  document.getElementById("unpinBtn").addEventListener("click", function(){
+    if(!activeGraph) return;
+    activeGraph.nodes.forEach(function(n){ n.pinned = false; });
+    startSimulation(true);
+  });
+
+  function fitViewSilent(){
+    if(!activeGraph || !activeGraph.nodes.length) return;
+    var xs = activeGraph.nodes.map(function(n){return n.x;});
+    var ys = activeGraph.nodes.map(function(n){return n.y;});
+    var minX = Math.min.apply(null,xs), maxX = Math.max.apply(null,xs);
+    var minY = Math.min.apply(null,ys), maxY = Math.max.apply(null,ys);
+    var rect = canvas.getBoundingClientRect();
+    var pad = 60;
+    var sx = (rect.width - pad*2) / Math.max(1, maxX-minX);
+    var sy = (rect.height - pad*2) / Math.max(1, maxY-minY);
+    view.scale = Math.min(2, Math.max(0.15, Math.min(sx, sy)));
+    view.ox = rect.width/2 - (minX+maxX)/2*view.scale;
+    view.oy = rect.height/2 - (minY+maxY)/2*view.scale;
+  }
+  function fitView(){
+    fitViewSilent();
+    if(activeGraph && !simRunning) draw(visibleGraph());
+  }
+
+  window.addEventListener("resize", function(){
+    if(activeTab !== "graph") return;
+    resizeCanvas();
+    if(activeGraph && !simRunning) draw(visibleGraph());
+  });
+
+  // ======================================================================
+  // Cross-navigation glue
+  // ======================================================================
+  function viewServiceInGraph(serviceKey){
+    var s = services.find(function(x){ return x.key === serviceKey; });
+    if(!s) return;
+    closeDrawer();
+    switchTab("graph");
+    var targetId = "service:" + s.catalogId + ":" + s.service_name;
+    if(nodeIndex.has(targetId)){
+      selectGraphNode(targetId);
+      centerOn(targetId);
+    }
+  }
+
+  function viewServiceInCatalog(nodeId){
+    var parts = nodeId.split(":");
+    var catId = parts[1];
+    var svcName = parts.slice(2).join(":");
+    var s = services.find(function(x){ return x.catalogId === catId && x.service_name === svcName; });
+    if(!s) return;
+    switchTab("catalog");
+    openDetail(s.key);
+  }
+
+  function findBackendSystemInCatalog(systemName){
+    if(!systemName) return;
+    switchTab("catalog");
+    document.getElementById("catalogSearchInput").value = systemName;
+    catalogState.search = systemName;
+    applyCatalogFilters();
+  }
+
+  // ======================================================================
+  // Helpers
+  // ======================================================================
+  function escapeHtml(str){
+    return String(str==null?"":str).replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+  function escapeAttr(str){ return escapeHtml(str); }
+  function truncate(str, n){
+    str = String(str||"");
+    return str.length > n ? str.slice(0,n-1) + "…" : str;
+  }
+
+  // ======================================================================
+  // Init
+  // ======================================================================
+  loadPersisted();
+  resizeCanvas();
+  rebuild();
+})();
+</script>
+</body>
+</html>
