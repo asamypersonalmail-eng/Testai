@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FindTrace &mdash; Middleware Request Log Viewer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-header__inner">
+      <h1 class="app-title">FindTrace</h1>
+      <p class="app-subtitle">Middleware Request Log Viewer</p>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <section class="panel search-panel" aria-labelledby="search-heading">
+      <h2 id="search-heading" class="visually-hidden">Search middleware logs</h2>
+
+      <form id="search-form" novalidate>
+        <fieldset class="source-select">
+          <legend>Log Source</legend>
+          <div class="source-cards">
+            <label class="source-card">
+              <input type="radio" name="source" value="1" checked />
+              <span class="source-card__label">HDB_LOG.txt</span>
+            </label>
+            <label class="source-card">
+              <input type="radio" name="source" value="2" />
+              <span class="source-card__label">HDB_MWV2_LOG.txt</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="request-id-field">
+          <label for="request-id">Request ID</label>
+          <input
+            type="text"
+            id="request-id"
+            name="requestId"
+            placeholder="Enter Request ID"
+            maxlength="200"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <p id="request-id-error" class="field-error" role="alert" hidden></p>
+        </div>
+
+        <div class="search-actions">
+          <button type="submit" id="search-btn" class="btn btn--primary">Search Logs</button>
+          <button type="button" id="clear-btn" class="btn btn--secondary">Clear</button>
+        </div>
+      </form>
+
+      <div id="history-panel" class="history-panel" hidden>
+        <h3>Recent Searches</h3>
+        <ul id="history-list" class="history-list"></ul>
+      </div>
+    </section>
+
+    <section class="panel status-panel" id="status-panel" aria-live="polite" hidden>
+      <div id="status-loading" class="status-loading" hidden>
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Searching middleware logs&hellip;</span>
+      </div>
+
+      <div id="status-summary" class="status-summary" hidden>
+        <dl>
+          <div><dt>Request ID:</dt><dd id="summary-request-id"></dd></div>
+          <div><dt>Source:</dt><dd id="summary-source"></dd></div>
+          <div><dt>Execution Time:</dt><dd id="summary-time"></dd></div>
+          <div><dt>Status:</dt><dd id="summary-status"></dd></div>
+        </dl>
+      </div>
+
+      <div id="status-error" class="status-error" role="alert" hidden></div>
+      <div id="status-empty" class="status-empty" hidden>No log entries found for this Request ID.</div>
+    </section>
+
+    <section class="panel result-panel" id="result-panel" hidden aria-labelledby="result-heading">
+      <h2 id="result-heading" class="visually-hidden">Log results</h2>
+
+      <div class="toolbar">
+        <div class="toolbar__group">
+          <button type="button" id="copy-btn" class="btn btn--toolbar">Copy</button>
+          <button type="button" id="download-btn" class="btn btn--toolbar">Download .log</button>
+          <button type="button" id="wrap-btn" class="btn btn--toolbar" aria-pressed="false">Wrap Lines: OFF</button>
+          <button type="button" id="expand-btn" class="btn btn--toolbar" aria-pressed="false">Expand</button>
+          <button type="button" id="raw-btn" class="btn btn--toolbar" aria-pressed="false">Raw View: OFF</button>
+        </div>
+        <div class="toolbar__group find-in-result">
+          <label for="find-input" class="visually-hidden">Find in Result</label>
+          <input type="text" id="find-input" placeholder="Find in Result" autocomplete="off" />
+          <span id="find-count" class="find-count">0 matches</span>
+          <button type="button" id="find-prev" class="btn btn--toolbar" title="Previous match">&uarr;</button>
+          <button type="button" id="find-next" class="btn btn--toolbar" title="Next match">&darr;</button>
+        </div>
+      </div>
+
+      <pre id="log-output" class="log-output" tabindex="0"></pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

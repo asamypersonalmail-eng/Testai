@@ -1,0 +1,17 @@
+{
+  "name": "findtrace-web",
+  "version": "1.0.0",
+  "description": "FindTrace - Middleware Request Log Viewer web application",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
