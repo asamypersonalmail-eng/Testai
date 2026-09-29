@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Count every service occurrence per hour, plus totals (streams, safe for multi-GB logs).
+"""Count service occurrences per hour, plus totals (streams, safe for multi-GB logs).
 
 A "service" is the text line right before a "Time is:" line, e.g.
 
@@ -11,12 +11,16 @@ A "service" is the text line right before a "Time is:" line, e.g.
     Time is: 2026-09-25 00:00:26.101010
 
 gives services "Validate Customer Start" and "Start getAccounts"
-(trailing dots and spaces are removed). All services are detected automatically.
+(trailing dots and spaces are removed).
+
+Only the services in SERVICES below are counted (exact name match).
+Edit that list to add/remove services, or use --service / --all.
 
 Usage:
     python ServiceCounts.py HDB_LOG09-25-2026.txt
     python ServiceCounts.py HDB_LOG09-25-2026.txt --csv service_counts.csv
-    python ServiceCounts.py HDB_LOG09-25-2026.txt --service getAccounts --service "ICT Transfer"
+    python ServiceCounts.py HDB_LOG09-25-2026.txt --service "Start ICT Transfer"
+    python ServiceCounts.py HDB_LOG09-25-2026.txt --all      # every service found in the log
     python ServiceCounts.py log1.txt log2.txt
 """
 import argparse
@@ -29,6 +33,14 @@ TIME_PREFIX = b"Time is:"
 SEPARATOR = b"====="
 HOUR_RE = re.compile(rb"(\d{4}-\d{2}-\d{2})[ T](\d{2})")
 UNKNOWN = ("unknown", "--")
+
+# Services to count (exact names, without the trailing dots)
+SERVICES = [
+    "Validate Customer Start",
+    "Start getAccounts",
+    "Start getAccount",
+    "Start ICT Transfer",
+]
 
 
 def clean_name(raw):
@@ -57,7 +69,9 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("files", nargs="+", help="log file(s); '-' for stdin")
     ap.add_argument("--service", action="append", default=[],
-                    help="only report services containing this text (case-insensitive, repeatable)")
+                    help="exact service name to count instead of the built-in list (repeatable)")
+    ap.add_argument("--all", action="store_true",
+                    help="count every service found in the log, not just the list")
     ap.add_argument("--csv", help="write an Excel-friendly table: date, hour, one column per service, total")
     args = ap.parse_args()
 
@@ -69,15 +83,14 @@ def main():
             with open(path, "rb", buffering=16 * 1024 * 1024) as fh:
                 count_file(fh, counts)
 
-    if args.service:
-        wanted = [w.lower() for w in args.service]
-        counts = {k: v for k, v in counts.items() if any(w in k.lower() for w in wanted)}
-
-    if not counts:
-        print("No services found.")
-        return
-
-    services = sorted(counts, key=lambda k: -sum(counts[k].values()))
+    if args.all:
+        services = sorted(counts, key=lambda k: -sum(counts[k].values()))
+        if not services:
+            print("No services found.")
+            return
+    else:
+        services = [clean_name(x.encode()) for x in (args.service or SERVICES)]
+        counts = {k: counts.get(k, Counter()) for k in services}
     hours = sorted({h for c in counts.values() for h in c})
     grand_total = sum(sum(c.values()) for c in counts.values())
     width = max(len(s) for s in services + ["Service"]) + 2
@@ -101,7 +114,7 @@ def main():
         print("-" * 29)
         print(f"{'Total':<19}{sum(counts[s].values()):>10}")
 
-    if counts and any(UNKNOWN in c for c in counts.values()):
+    if any(UNKNOWN in c for c in counts.values()):
         print("\nNOTE: some 'Time is:' lines had no parsable timestamp; counted under 'unknown'.",
               file=sys.stderr)
 
