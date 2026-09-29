@@ -40,6 +40,7 @@ SERVICES = [
     "Start getAccounts",
     "Start getAccount",
     "Start ICT Transfer",
+    "Customer Position",
 ]
 
 
