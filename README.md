@@ -37,3 +37,19 @@ put your token there — `.env` is git-ignored so it never gets committed.
 cp .env.example .env
 # then edit .env and set TELEGRAM_BOT_TOKEN
 ```
+
+# Money Ledger dashboard
+
+`dashboard/index.html` is a single-file personal finance dashboard. Open it in
+any browser; it needs no server or install.
+
+- **Spending:** add transactions or import a bank CSV, set monthly budgets per
+  category, and see spending vs budget, savings rate and a 6-month trend.
+- **Investing plan:** checks your monthly surplus and emergency fund, suggests a
+  monthly investment, projects growth, and shows how to rebalance your holdings
+  toward a target allocation based on age, risk comfort and time horizon.
+- **Your data stays local:** everything is saved in the browser's
+  localStorage. Use **Copy backup** / **Restore** to move it between devices.
+
+It opens with example data; choose **Clear example data** to start fresh.
+It is a planning tool, not financial advice.

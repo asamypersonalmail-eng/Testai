@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Money Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a single working column — month summary on top, then spending detail, then the investing plan. */
+:root {
+  --bg: #f4f6f5;
+  --surface: #fcfcfb;
+  --ink: #12201d;
+  --ink-2: #4a5754;
+  --muted: #7d8885;
+  --line: #dfe4e2;
+  --axis: #c3cbc8;
+  --accent: #0f6e66;
+  --accent-ink: #ffffff;
+  --accent-wash: #e1efec;
+  --good: #0ca30c; --good-text: #006300;
+  --warn: #fab219; --warn-text: #8a5a00;
+  --bad: #d03b3b; --bad-text: #b02a2a;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
+  --banner: #fff5dc; --banner-ink: #5c4300;
+  --f-display: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1413; --surface: #161d1c; --ink: #eef2f0; --ink-2: #b9c3c0; --muted: #87928f;
+    --line: #26302e; --axis: #39433f; --accent: #3fb3a6; --accent-ink: #06201d; --accent-wash: #173230;
+    --good-text: #3cc23c; --warn-text: #f3b73a; --bad-text: #ef7070;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --banner: #2e2610; --banner-ink: #f1d58a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1413; --surface: #161d1c; --ink: #eef2f0; --ink-2: #b9c3c0; --muted: #87928f;
+  --line: #26302e; --axis: #39433f; --accent: #3fb3a6; --accent-ink: #06201d; --accent-wash: #173230;
+  --good-text: #3cc23c; --warn-text: #f3b73a; --bad-text: #ef7070;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  --banner: #2e2610; --banner-ink: #f1d58a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 56px; display: grid; gap: 20px; }
+h1, h2, h3 { font-family: var(--f-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: 1.6rem; }
+h2 { font-size: 1.15rem; }
+h3 { font-size: 0.95rem; }
+p { margin: 0; }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.sub { color: var(--ink-2); font-size: 0.9rem; }
+.muted { color: var(--muted); }
+
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+select, input, button { font: inherit; color: inherit; }
+select, input[type="text"], input[type="number"], input[type="date"] {
+  background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 7px 9px; min-width: 0;
+}
+button { cursor: pointer; border-radius: 6px; padding: 7px 12px; border: 1px solid var(--axis); background: var(--surface); }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.ghost { border-color: transparent; background: transparent; color: var(--ink-2); padding: 4px 8px; }
+button.ghost:hover { color: var(--bad-text); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.banner { background: var(--banner); color: var(--banner-ink); border-radius: 8px; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; font-size: 0.9rem; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.kpi { background: var(--surface); padding: 14px 16px; display: grid; gap: 2px; align-content: start; }
+.kpi .val { font-family: var(--f-display); font-size: 1.55rem; font-weight: 700; }
+.kpi .note { font-size: 0.82rem; color: var(--ink-2); }
+
+.grid-2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 860px) {
+  .grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.good { color: var(--good-text); }
+.pill.warn { color: var(--warn-text); }
+.pill.bad { color: var(--bad-text); }
+
+/* category rows */
+.cats { display: grid; gap: 10px; }
+.cat-row { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr) 7.5rem; gap: 10px; align-items: center; font-size: 0.88rem; }
+.cat-name { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.cat-name span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.track { position: relative; height: 12px; background: var(--line); border-radius: 4px; }
+.fill { position: absolute; inset: 0 auto 0 0; border-radius: 0 4px 4px 0; }
+.budget-mark { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); border-radius: 1px; }
+.cat-amt { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 0.82rem; }
+.cat-amt small { display: block; color: var(--muted); }
+@media (max-width: 520px) {
+  .cat-row { grid-template-columns: minmax(0, 1fr) 6.5rem; }
+  .cat-row .track { grid-column: 1 / -1; grid-row: 2; }
+}
+
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.82rem; color: var(--ink-2); }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart text { fill: var(--muted); font: 11px var(--f-mono); }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .base { stroke: var(--axis); stroke-width: 1; }
+.tip { position: fixed; z-index: 10; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 0.8rem; padding: 7px 10px; border-radius: 6px; max-width: 240px; line-height: 1.4; }
+.tip b { font-weight: 600; }
+
+/* forms + tables */
+form.add { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr) 9rem 7.5rem 7rem auto; gap: 8px; align-items: end; }
+form.add label, .field { display: grid; gap: 3px; font-size: 0.75rem; color: var(--ink-2); font-weight: 500; }
+@media (max-width: 860px) { form.add { grid-template-columns: repeat(2, minmax(0, 1fr)); } form.add .desc { grid-column: 1 / -1; } }
+.table-wrap { overflow-x: auto; max-height: 360px; overflow-y: auto; border-top: 1px solid var(--line); }
+table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; position: sticky; top: 0; background: var(--surface); }
+th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td.r, th.r { text-align: right; }
+td.desc-cell { white-space: normal; min-width: 10rem; }
+.inc { color: var(--good-text); }
+
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 10px; }
+.plan { display: grid; gap: 10px; }
+.plan-step { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr); gap: 10px; align-items: start; }
+.plan-step .n { width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--accent-wash); color: var(--accent); font-weight: 700; display: grid; place-items: center; font-size: 0.8rem; }
+.plan-step.done .n { background: var(--good); color: #fff; }
+.big { font-family: var(--f-display); font-size: 1.9rem; font-weight: 700; line-height: 1.1; }
+.stack-bar { display: flex; gap: 2px; height: 22px; border-radius: 4px; overflow: hidden; }
+.stack-bar div { min-width: 2px; }
+.alloc-row { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: 10px; align-items: center; font-size: 0.82rem; }
+.tips { margin: 0; padding-left: 1.1rem; display: grid; gap: 6px; font-size: 0.9rem; }
+.small { font-size: 0.8rem; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+textarea { width: 100%; min-height: 90px; font: 12px var(--f-mono); background: var(--surface); color: var(--ink); border: 1px solid var(--axis); border-radius: 6px; padding: 8px; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; z-index: 20; }
+footer { color: var(--muted); font-size: 0.8rem; }
+@media (prefers-reduced-motion: no-preference) { .fill, .stack-bar div { transition: width .3s ease; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Personal finance</p>
+      <h1>Money Ledger</h1>
+    </div>
+    <div class="controls">
+      <label class="field" for="month">Month<select id="month"></select></label>
+      <label class="field" for="currency">Currency<select id="currency">
+        <option value="USD">USD $</option><option value="INR">INR ₹</option><option value="EUR">EUR €</option>
+        <option value="GBP">GBP £</option><option value="CAD">CAD $</option><option value="AUD">AUD $</option>
+        <option value="AED">AED</option><option value="SGD">SGD $</option><option value="JPY">JPY ¥</option>
+      </select></label>
+    </div>
+  </header>
+
+  <div class="banner" id="example-banner" hidden>
+    <span>You're looking at example data. Clear it to start tracking your own money.</span>
+    <button type="button" id="clear-examples">Clear example data</button>
+  </div>
+
+  <section class="kpis" aria-label="Month summary">
+    <div class="kpi"><span class="eyebrow">Income</span><span class="val" id="k-income">–</span><span class="note" id="k-income-n"></span></div>
+    <div class="kpi"><span class="eyebrow">Spent</span><span class="val" id="k-spent">–</span><span class="note" id="k-spent-n"></span></div>
+    <div class="kpi"><span class="eyebrow">Saved</span><span class="val" id="k-saved">–</span><span class="note" id="k-saved-n"></span></div>
+    <div class="kpi"><span class="eyebrow">Savings rate</span><span class="val" id="k-rate">–</span><span class="note" id="k-rate-n"></span></div>
+  </section>
+
+  <div class="grid-2">
+    <section class="panel" aria-labelledby="h-cats">
+      <div class="panel-head">
+        <h2 id="h-cats">Spending vs budget</h2>
+        <span class="small muted">Black tick = monthly budget</span>
+      </div>
+      <div class="cats" id="cats"></div>
+      <details>
+        <summary class="small">Edit monthly budgets</summary>
+        <div class="fields" id="budget-fields" style="margin-top:10px"></div>
+      </details>
+    </section>
+
+    <section class="panel" aria-labelledby="h-trend">
+      <div class="panel-head">
+        <h2 id="h-trend">Last 6 months</h2>
+        <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>Income</span><span><i class="sw" style="background:var(--s2)"></i>Spent</span></div>
+      </div>
+      <svg class="chart" id="trend" viewBox="0 0 460 240" role="img" aria-label="Income and spending for the last six months"></svg>
+      <ul class="tips" id="insights"></ul>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="h-tx">
+    <div class="panel-head">
+      <h2 id="h-tx">Transactions</h2>
+      <span class="small muted" id="tx-count"></span>
+    </div>
+    <form class="add" id="add-form" autocomplete="off">
+      <label for="f-date">Date<input type="date" id="f-date" required></label>
+      <label for="f-desc" class="desc">Description<input type="text" id="f-desc" placeholder="Groceries at market" required></label>
+      <label for="f-cat">Category<select id="f-cat"></select></label>
+      <label for="f-type">Type<select id="f-type"><option value="expense">Expense</option><option value="income">Income</option></select></label>
+      <label for="f-amt">Amount<input type="number" id="f-amt" min="0" step="0.01" required></label>
+      <button class="primary" type="submit">Add</button>
+    </form>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="r">Amount</th><th></th></tr></thead>
+        <tbody id="tx-body"></tbody>
+      </table>
+    </div>
+    <details>
+      <summary class="small">Import from a bank CSV</summary>
+      <div style="display:grid;gap:8px;margin-top:10px">
+        <p class="small sub">Columns needed: <span class="num">date, description, amount</span> (negative = expense). An optional <span class="num">category</span> column is used when it matches one of the categories here; otherwise the category is guessed from the description.</p>
+        <input type="file" id="csv-file" accept=".csv,text/csv">
+      </div>
+    </details>
+  </section>
+
+  <h2 style="margin-top:12px">Investing plan</h2>
+
+  <div class="grid-2">
+    <section class="panel" aria-labelledby="h-plan">
+      <div class="panel-head"><h3 id="h-plan">Your next steps</h3><span id="plan-pill"></span></div>
+      <div class="plan" id="plan"></div>
+      <div class="fields">
+        <label class="field" for="p-age">Your age<input type="number" id="p-age" min="16" max="100"></label>
+        <label class="field" for="p-risk">Risk comfort<select id="p-risk"><option value="conservative">Conservative</option><option value="moderate">Moderate</option><option value="aggressive">Aggressive</option></select></label>
+        <label class="field" for="p-horizon">Years until you need it<input type="number" id="p-horizon" min="1" max="50"></label>
+        <label class="field" for="p-emerg">Emergency fund (months)<input type="number" id="p-emerg" min="1" max="24"></label>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-proj">
+      <div class="panel-head">
+        <h3 id="h-proj">Growth projection</h3>
+        <div class="legend"><span><i class="sw" style="background:var(--s3)"></i>Projected value</span><span><i class="sw" style="background:var(--muted)"></i>Money you put in</span></div>
+      </div>
+      <div class="fields">
+        <label class="field" for="p-monthly">Monthly investment<input type="number" id="p-monthly" min="0" step="10"></label>
+        <label class="field" for="p-return">Expected yearly return %<input type="number" id="p-return" min="0" max="20" step="0.5"></label>
+      </div>
+      <svg class="chart" id="proj" viewBox="0 0 460 220" role="img" aria-label="Projected portfolio growth"></svg>
+      <p class="sub" id="proj-summary"></p>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="h-hold">
+    <div class="panel-head">
+      <h3 id="h-hold">Holdings and allocation</h3>
+      <div class="legend" id="alloc-legend"></div>
+    </div>
+    <div style="display:grid;gap:8px">
+      <div class="alloc-row"><span class="muted">Current</span><div class="stack-bar" id="bar-current"></div></div>
+      <div class="alloc-row"><span class="muted">Target</span><div class="stack-bar" id="bar-target"></div></div>
+    </div>
+    <div class="table-wrap" style="max-height:none">
+      <table>
+        <thead><tr><th>Asset class</th><th class="r">Current</th><th class="r">Now %</th><th class="r">Target %</th><th class="r">To rebalance</th></tr></thead>
+        <tbody id="alloc-body"></tbody>
+      </table>
+    </div>
+    <form class="add" id="hold-form" autocomplete="off" style="grid-template-columns:minmax(0,1fr) 9rem 8rem auto">
+      <label for="h-name" class="desc">Holding<input type="text" id="h-name" placeholder="Total market index fund" required></label>
+      <label for="h-cls">Asset class<select id="h-cls"></select></label>
+      <label for="h-val">Value<input type="number" id="h-val" min="0" step="0.01" required></label>
+      <button class="primary" type="submit">Add</button>
+    </form>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Holding</th><th>Class</th><th class="r">Value</th><th></th></tr></thead>
+        <tbody id="hold-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-data">
+    <h3 id="h-data">Back up your data</h3>
+    <p class="sub">Everything is stored only in this browser. Copy a backup now and then, and paste it here to restore it on another device.</p>
+    <div class="row">
+      <button type="button" id="copy-backup">Copy backup</button>
+      <button type="button" id="restore-backup">Restore from text below</button>
+      <button type="button" id="reset-all" class="ghost">Erase everything</button>
+    </div>
+    <label for="backup-text" class="small muted">Backup text</label>
+    <textarea id="backup-text" spellcheck="false" placeholder="Paste a backup here, then choose Restore"></textarea>
+  </section>
+
+  <footer>This dashboard is an educational planning tool, not financial advice. Projections assume a steady return and ignore taxes, fees and inflation; real markets go up and down. Check big decisions with a licensed adviser.</footer>
+</div>
+<div class="tip" id="tip" hidden></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  const CATS = ["Housing", "Food", "Transport", "Utilities", "Shopping", "Health", "Fun", "Other"];
+  const INCOME_CAT = "Income";
+  const CLASSES = ["Stocks", "Bonds", "Cash", "Other"];
+  const KEY = "money-ledger-v1";
+  const $ = (id) => document.getElementById(id);
+  const color = (i) => `var(--s${(i % 8) + 1})`;
+  const catColor = (c) => color(Math.max(0, CATS.indexOf(c)));
+  const clsColor = (c) => color(CLASSES.indexOf(c));
+  const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const ym = (d) => d.slice(0, 7);
+  const today = new Date();
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  function guessCurrency() {
+    const l = (navigator.language || "").toLowerCase();
+    if (l.endsWith("-in")) return "INR";
+    if (l.endsWith("-gb")) return "GBP";
+    if (l.endsWith("-ca")) return "CAD";
+    if (l.endsWith("-au")) return "AUD";
+    if (l.endsWith("-ae")) return "AED";
+    if (l.endsWith("-sg")) return "SGD";
+    if (l.startsWith("ja")) return "JPY";
+    if (/-(de|fr|es|it|nl|ie|pt|at|be|fi)$/.test(l)) return "EUR";
+    return "USD";
+  }
+
+  // Example data: six months of a plausible household, scaled by currency.
+  function exampleState(currency) {
+    const scale = { INR: 80, JPY: 150, AED: 3.7 }[currency] || 1;
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const txns = [];
+    const plan = [
+      ["Housing", "Rent", 1450, 1, 0], ["Utilities", "Electricity and water", 140, 5, 0.25], ["Utilities", "Phone and internet", 85, 8, 0],
+      ["Food", "Groceries", 110, 3, 0.3], ["Food", "Groceries", 95, 11, 0.3], ["Food", "Groceries", 120, 19, 0.3], ["Food", "Groceries", 90, 26, 0.3],
+      ["Food", "Dinner out", 60, 14, 0.5], ["Transport", "Fuel", 55, 6, 0.3], ["Transport", "Fuel", 50, 21, 0.3], ["Transport", "Transit pass", 40, 2, 0],
+      ["Shopping", "Clothes and household", 140, 17, 0.7], ["Health", "Gym membership", 45, 4, 0], ["Health", "Pharmacy", 30, 23, 0.6],
+      ["Fun", "Streaming services", 28, 9, 0], ["Fun", "Concert and outings", 90, 24, 0.7], ["Other", "Gifts", 50, 27, 0.8],
+    ];
+    for (let m = 5; m >= 0; m--) {
+      const base = new Date(today.getFullYear(), today.getMonth() - m, 1);
+      const lastDay = m === 0 ? today.getDate() : new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
+      const at = (day) => iso(new Date(base.getFullYear(), base.getMonth(), Math.min(day, lastDay)));
+      if (1 <= lastDay) txns.push({ id: uid(), date: at(1), desc: "Salary", cat: INCOME_CAT, type: "income", amount: Math.round(4300 * scale) });
+      if (m % 3 === 1 && 15 <= lastDay) txns.push({ id: uid(), date: at(15), desc: "Freelance project", cat: INCOME_CAT, type: "income", amount: Math.round(600 * scale) });
+      for (const [cat, desc, amt, day, jitter] of plan) {
+        if (day > lastDay) continue;
+        const v = amt * (1 + (rnd() - 0.5) * 2 * jitter) * scale;
+        txns.push({ id: uid(), date: at(day), desc, cat, type: "expense", amount: Math.round(v * 100) / 100 });
+      }
+    }
+    const b = { Housing: 1450, Food: 450, Transport: 160, Utilities: 230, Shopping: 150, Health: 90, Fun: 120, Other: 60 };
+    for (const k in b) b[k] = Math.round(b[k] * scale);
+    return {
+      currency, example: true, txns, budgets: b,
+      holdings: [
+        { id: uid(), name: "Savings account", cls: "Cash", value: Math.round(9500 * scale) },
+        { id: uid(), name: "Total market index fund", cls: "Stocks", value: Math.round(14200 * scale) },
+        { id: uid(), name: "Bond index fund", cls: "Bonds", value: Math.round(3800 * scale) },
+      ],
+      profile: { age: 30, risk: "moderate", horizon: 15, emergencyMonths: 6, monthly: null, ret: 8 },
+    };
+  }
+
+  function emptyState(currency) {
+    const budgets = {}; CATS.forEach((c) => (budgets[c] = 0));
+    return { currency, example: false, txns: [], budgets, holdings: [], profile: { age: 30, risk: "moderate", horizon: 15, emergencyMonths: 6, monthly: null, ret: 8 } };
+  }
+
+  function load() {
+    try { const raw = localStorage.getItem(KEY); if (raw) return normalize(JSON.parse(raw)); } catch (e) {}
+    return exampleState(guessCurrency());
+  }
+  function normalize(s) {
+    const base = emptyState(s.currency || guessCurrency());
+    return { ...base, ...s, budgets: { ...base.budgets, ...(s.budgets || {}) }, profile: { ...base.profile, ...(s.profile || {}) }, txns: Array.isArray(s.txns) ? s.txns : [], holdings: Array.isArray(s.holdings) ? s.holdings : [] };
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  let state = load();
+  let month = ym(iso(today));
+
+  const fmt = (v, compact) => {
+    try {
+      return new Intl.NumberFormat(undefined, { style: "currency", currency: state.currency, maximumFractionDigits: compact || Math.abs(v) >= 1000 ? 0 : 2, notation: compact && Math.abs(v) >= 10000 ? "compact" : "standard" }).format(v);
+    } catch (e) { return Math.round(v).toLocaleString(); }
+  };
+  const pct = (v) => `${Math.round(v * 100)}%`;
+  const monthLabel = (m, short) => new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 1).toLocaleDateString(undefined, short ? { month: "short" } : { month: "long", year: "numeric" });
+  const shiftMonth = (m, n) => { const d = new Date(+m.slice(0, 4), +m.slice(5, 7) - 1 + n, 1); return iso(d).slice(0, 7); };
+
+  function totals(m) {
+    let income = 0, spent = 0; const byCat = {}; CATS.forEach((c) => (byCat[c] = 0));
+    for (const t of state.txns) {
+      if (ym(t.date) !== m) continue;
+      if (t.type === "income") income += +t.amount;
+      else { spent += +t.amount; byCat[CATS.includes(t.cat) ? t.cat : "Other"] += +t.amount; }
+    }
+    return { income, spent, byCat };
+  }
+  // Average over the last 3 complete months that have data (falls back to the current month).
+  function averages() {
+    const cur = ym(iso(today));
+    const months = [];
+    for (let i = 1; i <= 6 && months.length < 3; i++) { const m = shiftMonth(cur, -i); const t = totals(m); if (t.income || t.spent) months.push(t); }
+    if (!months.length) months.push(totals(cur));
+    const n = months.length;
+    return { income: months.reduce((a, t) => a + t.income, 0) / n, spent: months.reduce((a, t) => a + t.spent, 0) / n };
+  }
+
+  // ---------- tooltip ----------
+  const tip = $("tip");
+  function showTip(e, html) {
+    tip.innerHTML = html; tip.hidden = false;
+    const r = tip.getBoundingClientRect();
+    let x = e.clientX + 14, y = e.clientY + 14;
+    if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 14;
+    if (y + r.height > innerHeight - 8) y = e.clientY - r.height - 14;
+    tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px";
+  }
+  const hideTip = () => (tip.hidden = true);
+
+  function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), 2200); }
+
+  // ---------- nice axis ----------
+  function niceMax(v) { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; }
+
+  // ---------- render: header + KPIs ----------
+  function renderMonths() {
+    const set = new Set(state.txns.map((t) => ym(t.date))); set.add(ym(iso(today)));
+    const list = [...set].sort().reverse();
+    if (!list.includes(month)) month = list[0];
+    $("month").innerHTML = list.map((m) => `<option value="${m}"${m === month ? " selected" : ""}>${monthLabel(m)}</option>`).join("");
+    $("currency").value = state.currency;
+  }
+
+  function renderKpis() {
+    const t = totals(month), prev = totals(shiftMonth(month, -1));
+    const saved = t.income - t.spent, rate = t.income ? saved / t.income : 0;
+    const budgetTotal = CATS.reduce((a, c) => a + (+state.budgets[c] || 0), 0);
+    $("k-income").textContent = fmt(t.income);
+    $("k-income-n").textContent = prev.income ? `${t.income >= prev.income ? "+" : "−"}${fmt(Math.abs(t.income - prev.income))} vs last month` : "No data last month";
+    $("k-spent").textContent = fmt(t.spent);
+    $("k-spent-n").textContent = budgetTotal ? `${pct(t.spent / budgetTotal)} of ${fmt(budgetTotal)} budget` : "Set budgets below";
+    $("k-saved").textContent = fmt(saved);
+    $("k-saved").style.color = saved < 0 ? "var(--bad-text)" : "";
+    $("k-saved-n").textContent = saved >= 0 ? "Available to save or invest" : "You spent more than you earned";
+    $("k-rate").textContent = t.income ? pct(rate) : "–";
+    const cls = rate >= 0.2 ? "good" : rate >= 0.1 ? "warn" : "bad";
+    $("k-rate-n").innerHTML = t.income ? `<span class="pill ${cls}">${cls === "good" ? "✓ On track" : cls === "warn" ? "! Below 20% goal" : "✕ Under 10%"}</span>` : "Add income to see this";
+    $("example-banner").hidden = !state.example;
+  }
+
+  // ---------- render: categories ----------
+  function renderCats() {
+    const t = totals(month);
+    const max = Math.max(1, ...CATS.map((c) => Math.max(t.byCat[c], +state.budgets[c] || 0)));
+    $("cats").innerHTML = CATS.map((c) => {
+      const s = t.byCat[c], b = +state.budgets[c] || 0, over = b && s > b;
+      return `<div class="cat-row" data-cat="${c}">
+        <div class="cat-name"><i class="sw" style="background:${catColor(c)}"></i><span>${c}</span></div>
+        <div class="track"><div class="fill" style="width:${(s / max) * 100}%;background:${catColor(c)}"></div>${b ? `<div class="budget-mark" style="left:calc(${(b / max) * 100}% - 1px)"></div>` : ""}</div>
+        <div class="cat-amt">${fmt(s)}<small${over ? ' style="color:var(--bad-text)"' : ""}>${b ? (over ? `${fmt(s - b)} over` : `${fmt(b - s)} left`) : "no budget"}</small></div>
+      </div>`;
+    }).join("");
+    $("cats").querySelectorAll(".cat-row").forEach((row) => {
+      const c = row.dataset.cat;
+      row.addEventListener("mousemove", (e) => { const s = t.byCat[c], b = +state.budgets[c] || 0; showTip(e, `<b>${c}</b><br>Spent ${fmt(s)}${b ? `<br>Budget ${fmt(b)} (${pct(s / b)} used)` : ""}`); });
+      row.addEventListener("mouseleave", hideTip);
+    });
+    $("budget-fields").innerHTML = CATS.map((c) => `<label class="field" for="b-${c}">${c}<input type="number" min="0" step="10" id="b-${c}" data-cat="${c}" value="${+state.budgets[c] || 0}"></label>`).join("");
+  }
+
+  // ---------- render: trend chart ----------
+  function renderTrend() {
+    const svg = $("trend"), W = 460, H = 240, L = 52, R = 8, T = 10, B = 26;
+    const months = []; for (let i = 5; i >= 0; i--) months.push(shiftMonth(month, -i));
+    const data = months.map((m) => ({ m, ...totals(m) }));
+    const top = niceMax(Math.max(...data.map((d) => Math.max(d.income, d.spent))));
+    const y = (v) => T + (H - T - B) * (1 - v / top);
+    const band = (W - L - R) / 6, bw = Math.min(18, band / 3.2);
+    let g = "";
+    for (let i = 0; i <= 4; i++) { const v = (top / 4) * i, yy = y(v); g += `<line class="${i ? "grid" : "base"}" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end">${fmt(v, true)}</text>`; }
+    const bar = (x, v, fill) => { const h = Math.max(0, y(0) - y(v)); if (h <= 0) return ""; const r = Math.min(4, h); return `<path d="M${x},${y(0)} V${y(v) + r} Q${x},${y(v)} ${x + r},${y(v)} H${x + bw - r} Q${x + bw},${y(v)} ${x + bw},${y(v) + r} V${y(0)} Z" fill="${fill}"/>`; };
+    data.forEach((d, i) => {
+      const cx = L + band * i + band / 2;
+      g += `<g class="hit" data-i="${i}"><rect x="${L + band * i}" y="${T}" width="${band}" height="${H - T - B}" fill="transparent"/>`;
+      g += bar(cx - bw - 1, d.income, "var(--s1)") + bar(cx + 1, d.spent, "var(--s2)");
+      g += `</g><text x="${cx}" y="${H - 8}" text-anchor="middle"${d.m === month ? ' style="fill:var(--ink);font-weight:600"' : ""}>${monthLabel(d.m, true)}</text>`;
+    });
+    svg.innerHTML = g;
+    svg.querySelectorAll(".hit").forEach((el) => {
+      const d = data[+el.dataset.i];
+      el.addEventListener("mousemove", (e) => showTip(e, `<b>${monthLabel(d.m)}</b><br>Income ${fmt(d.income)}<br>Spent ${fmt(d.spent)}<br>Saved ${fmt(d.income - d.spent)}`));
+      el.addEventListener("mouseleave", hideTip);
+      el.addEventListener("click", () => { month = d.m; render(); });
+    });
+
+    // Insights
+    const t = totals(month), out = [];
+    const overs = CATS.filter((c) => state.budgets[c] && t.byCat[c] > state.budgets[c]).sort((a, b) => (t.byCat[b] - state.budgets[b]) - (t.byCat[a] - state.budgets[a]));
+    if (overs.length) out.push(`<b>${overs[0]}</b> is ${fmt(t.byCat[overs[0]] - state.budgets[overs[0]])} over budget this month${overs.length > 1 ? `, and ${overs.length - 1} other ${overs.length > 2 ? "categories are" : "category is"} too` : ""}.`);
+    const prev = data.slice(0, 5).filter((d) => d.spent);
+    if (prev.length && t.spent) {
+      const top = CATS.slice().sort((a, b) => t.byCat[b] - t.byCat[a])[0];
+      out.push(`Your biggest expense is <b>${top}</b> at ${pct(t.byCat[top] / t.spent)} of spending.`);
+    }
+    const avg = averages();
+    if (avg.income) {
+      const r = (avg.income - avg.spent) / avg.income;
+      out.push(r >= 0.2 ? `You save about ${pct(r)} of your income on average. A common goal is 20% or more, so you're there.` : `You save about ${pct(Math.max(0, r))} of your income on average. Cutting ${fmt(Math.max(0, avg.income * 0.2 - (avg.income - avg.spent)))} a month would reach a 20% savings rate.`);
+    }
+    if (!out.length) out.push("Add a few transactions to see what's driving your spending.");
+    $("insights").innerHTML = out.map((s) => `<li>${s}</li>`).join("");
+  }
+
+  // ---------- render: transactions ----------
+  function renderTx() {
+    const rows = state.txns.filter((t) => ym(t.date) === month).sort((a, b) => b.date.localeCompare(a.date));
+    $("tx-count").textContent = `${rows.length} in ${monthLabel(month)}`;
+    $("tx-body").innerHTML = rows.length ? rows.map((t) => `<tr>
+      <td class="num">${t.date.slice(5)}</td><td class="desc-cell">${esc(t.desc)}</td>
+      <td><span class="cat-name">${t.type === "income" ? "" : `<i class="sw" style="background:${catColor(t.cat)}"></i>`}<span>${esc(t.cat)}</span></span></td>
+      <td class="r num ${t.type === "income" ? "inc" : ""}">${t.type === "income" ? "+" : "−"}${fmt(+t.amount)}</td>
+      <td class="r"><button class="ghost" type="button" data-del="${t.id}" aria-label="Delete ${esc(t.desc)}">Delete</button></td></tr>`).join("")
+      : `<tr><td colspan="5" class="muted">No transactions in ${monthLabel(month)} yet. Add one above.</td></tr>`;
+  }
+  function fillCatSelect() {
+    const type = $("f-type").value;
+    $("f-cat").innerHTML = (type === "income" ? [INCOME_CAT] : CATS).map((c) => `<option>${c}</option>`).join("");
+  }
+
+  // ---------- investing ----------
+  // efShare: fraction of the portfolio the emergency fund needs, which always stays in cash.
+  function targetAlloc(p, efShare = 0) {
+    let stocks = { conservative: 40, moderate: 60, aggressive: 80 }[p.risk] ?? 60;
+    // Rule of thumb: less stock as age rises, and much less for money needed soon.
+    stocks = Math.min(stocks, Math.max(20, 110 - p.age));
+    if (p.horizon < 3) stocks = Math.min(stocks, 15);
+    else if (p.horizon < 7) stocks = Math.min(stocks, 40);
+    const baseCash = p.horizon < 3 ? 35 : 5;
+    const cash = Math.min(100, Math.max(baseCash, Math.round(efShare * 100)));
+    const k = (100 - cash) / (100 - baseCash);
+    stocks = Math.round(stocks * k);
+    return { Stocks: stocks, Bonds: Math.max(0, 100 - stocks - cash), Cash: cash, Other: 0 };
+  }
+
+  function renderInvesting() {
+    const p = state.profile;
+    $("p-age").value = p.age; $("p-risk").value = p.risk; $("p-horizon").value = p.horizon; $("p-emerg").value = p.emergencyMonths; $("p-return").value = p.ret;
+    const avg = averages();
+    const surplus = Math.max(0, avg.income - avg.spent);
+    const byCls = {}; CLASSES.forEach((c) => (byCls[c] = 0));
+    state.holdings.forEach((h) => (byCls[CLASSES.includes(h.cls) ? h.cls : "Other"] += +h.value));
+    const total = CLASSES.reduce((a, c) => a + byCls[c], 0);
+    const efTarget = avg.spent * p.emergencyMonths;
+    const efHave = byCls.Cash;
+    const efDone = efTarget > 0 && efHave >= efTarget;
+    const suggested = Math.round((efDone ? surplus * 0.9 : surplus * 0.5) / 10) * 10;
+    const monthly = p.monthly ?? suggested;
+    const target = targetAlloc(p, total ? Math.min(efHave, efTarget) / total : 0);
+    $("p-monthly").value = monthly;
+
+    const steps = [
+      { done: surplus > 0, title: surplus > 0 ? `You have about ${fmt(surplus)} left each month` : "Spend less than you earn", body: surplus > 0 ? `Based on your average income of ${fmt(avg.income)} and spending of ${fmt(avg.spent)}.` : "Right now spending matches or exceeds income. Trim the categories that are over budget before investing." },
+      { done: efDone, title: efDone ? "Emergency fund is covered" : `Build an emergency fund of ${fmt(efTarget)}`, body: efDone ? `Your ${fmt(efHave)} in cash covers ${(efHave / Math.max(1, avg.spent)).toFixed(1)} months of spending.` : `You have ${fmt(efHave)} in cash (${(efHave / Math.max(1, avg.spent)).toFixed(1)} months). Keep it in a high-yield savings account. Until it's full, put about half your surplus here.` },
+      { done: false, title: `Invest about ${fmt(suggested)} a month`, body: `${efDone ? "Most of your surplus can go to investing; keep a little as a buffer." : "The other half of your surplus can start investing now."} Low-cost, broad index funds are the simplest place to start. Pay off any debt above about 7% interest first.` },
+      { done: false, title: `Aim for ${targetAlloc(p).Stocks}% stocks in your investments`, body: `For ${p.risk} risk, age ${p.age} and ${p.horizon} years until you need the money. The target below keeps your emergency fund in cash and splits the rest.` },
+    ];
+    $("plan").innerHTML = steps.map((s, i) => `<div class="plan-step${s.done ? " done" : ""}"><span class="n">${s.done ? "✓" : i + 1}</span><div><b>${s.title}</b><p class="sub small">${s.body}</p></div></div>`).join("");
+    $("plan-pill").innerHTML = efDone ? `<span class="pill good">✓ Ready to invest</span>` : surplus > 0 ? `<span class="pill warn">! Fund emergencies first</span>` : `<span class="pill bad">✕ No surplus yet</span>`;
+
+    renderProjection(total - byCls.Cash, monthly, p.ret, p.horizon);
+    renderAlloc(byCls, total, target);
+  }
+
+  function renderProjection(start, monthly, ret, years) {
+    const svg = $("proj"), W = 460, H = 220, L = 52, R = 10, T = 12, B = 24;
+    const r = ret / 100 / 12, pts = [];
+    let v = Math.max(0, start), put = Math.max(0, start);
+    pts.push({ yr: 0, v, put });
+    for (let m = 1; m <= years * 12; m++) { v = v * (1 + r) + monthly; put += monthly; if (m % 12 === 0) pts.push({ yr: m / 12, v, put }); }
+    const top = niceMax(Math.max(1, ...pts.map((d) => d.v)));
+    const x = (yr) => L + (W - L - R) * (yr / years), y = (val) => T + (H - T - B) * (1 - val / top);
+    let g = "";
+    for (let i = 0; i <= 4; i++) { const val = (top / 4) * i, yy = y(val); g += `<line class="${i ? "grid" : "base"}" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end">${fmt(val, true)}</text>`; }
+    const step = Math.max(1, Math.ceil(years / 6));
+    pts.forEach((d) => { if (d.yr % step === 0 || d.yr === years) g += `<text x="${x(d.yr)}" y="${H - 6}" text-anchor="middle">${d.yr === 0 ? "Now" : d.yr + "y"}</text>`; });
+    const line = (k) => pts.map((d, i) => `${i ? "L" : "M"}${x(d.yr)},${y(d[k])}`).join("");
+    g += `<path d="${line("v")} L${x(years)},${y(0)} L${x(0)},${y(0)} Z" fill="var(--s3)" opacity="0.12"/>`;
+    g += `<path d="${line("put")}" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="4 3"/>`;
+    g += `<path d="${line("v")}" fill="none" stroke="var(--s3)" stroke-width="2"/>`;
+    const end = pts[pts.length - 1];
+    g += `<circle cx="${x(end.yr)}" cy="${y(end.v)}" r="4" fill="var(--s3)" stroke="var(--surface)" stroke-width="2"/>`;
+    g += `<line id="proj-x" class="base" y1="${T}" y2="${y(0)}" x1="-10" x2="-10"/><rect id="proj-hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>`;
+    svg.innerHTML = g;
+    const hit = svg.querySelector("#proj-hit"), xl = svg.querySelector("#proj-x");
+    hit.addEventListener("mousemove", (e) => {
+      const b = svg.getBoundingClientRect(), px = ((e.clientX - b.left) / b.width) * W;
+      const d = pts[Math.max(0, Math.min(pts.length - 1, Math.round(((px - L) / (W - L - R)) * years)))];
+      xl.setAttribute("x1", x(d.yr)); xl.setAttribute("x2", x(d.yr));
+      showTip(e, `<b>${d.yr === 0 ? "Today" : `Year ${d.yr}`}</b><br>Projected ${fmt(d.v)}<br>You put in ${fmt(d.put)}<br>Growth ${fmt(d.v - d.put)}`);
+    });
+    hit.addEventListener("mouseleave", () => { hideTip(); xl.setAttribute("x1", -10); xl.setAttribute("x2", -10); });
+    $("proj-summary").innerHTML = `Investing <b>${fmt(monthly)}</b> a month at ${ret}% for ${years} years could grow ${fmt(start)} of invested holdings to about <b>${fmt(end.v)}</b>. Of that, ${fmt(end.v - end.put)} is growth.`;
+  }
+
+  function renderAlloc(byCls, total, target) {
+    $("alloc-legend").innerHTML = CLASSES.map((c) => `<span><i class="sw" style="background:${clsColor(c)}"></i>${c}</span>`).join("");
+    const seg = (c, share) => share > 0 ? `<div style="width:${share * 100}%;background:${clsColor(c)}" data-c="${c}" data-s="${share}"></div>` : "";
+    $("bar-current").innerHTML = total ? CLASSES.map((c) => seg(c, byCls[c] / total)).join("") : `<span class="small muted">Add holdings below</span>`;
+    $("bar-target").innerHTML = CLASSES.map((c) => seg(c, target[c] / 100)).join("");
+    document.querySelectorAll(".stack-bar div").forEach((el) => {
+      el.addEventListener("mousemove", (e) => showTip(e, `<b>${el.dataset.c}</b><br>${pct(+el.dataset.s)}`));
+      el.addEventListener("mouseleave", hideTip);
+    });
+    $("alloc-body").innerHTML = CLASSES.map((c) => {
+      const now = total ? byCls[c] / total : 0, diff = total * (target[c] / 100) - byCls[c];
+      const act = !total ? "–" : Math.abs(diff) < total * 0.02 ? `<span class="pill good">✓ On target</span>` : diff > 0 ? `Add ${fmt(diff)}` : `Reduce ${fmt(-diff)}`;
+      return `<tr><td><span class="cat-name"><i class="sw" style="background:${clsColor(c)}"></i><span>${c}</span></span></td><td class="r num">${fmt(byCls[c])}</td><td class="r num">${pct(now)}</td><td class="r num">${target[c]}%</td><td class="r">${act}</td></tr>`;
+    }).join("") + `<tr><td><b>Total</b></td><td class="r num"><b>${fmt(total)}</b></td><td></td><td></td><td></td></tr>`;
+    $("hold-body").innerHTML = state.holdings.length ? state.holdings.map((h) => `<tr><td class="desc-cell">${esc(h.name)}</td><td>${esc(h.cls)}</td><td class="r num">${fmt(+h.value)}</td><td class="r"><button class="ghost" type="button" data-hdel="${h.id}" aria-label="Delete ${esc(h.name)}">Delete</button></td></tr>`).join("")
+      : `<tr><td colspan="4" class="muted">No holdings yet. Add your savings, retirement and brokerage accounts.</td></tr>`;
+  }
+
+  function render() { renderMonths(); renderKpis(); renderCats(); renderTrend(); renderTx(); renderInvesting(); }
+
+  // ---------- events ----------
+  // Editing anything turns example data into the user's own, so the banner goes away.
+  function commit() { state.example = false; save(); render(); }
+
+  $("month").addEventListener("change", (e) => { month = e.target.value; render(); });
+  $("currency").addEventListener("change", (e) => { state.currency = e.target.value; save(); render(); });
+  $("clear-examples").addEventListener("click", () => { state = emptyState(state.currency); save(); render(); toast("Example data cleared"); });
+  $("f-type").addEventListener("change", fillCatSelect);
+  $("add-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const amount = parseFloat($("f-amt").value);
+    if (!(amount > 0)) return;
+    state.txns.push({ id: uid(), date: $("f-date").value, desc: $("f-desc").value.trim(), cat: $("f-cat").value, type: $("f-type").value, amount });
+    month = ym($("f-date").value);
+    $("f-desc").value = ""; $("f-amt").value = "";
+    commit(); toast("Transaction added"); $("f-desc").focus();
+  });
+  $("tx-body").addEventListener("click", (e) => { const id = e.target.dataset?.del; if (!id) return; state.txns = state.txns.filter((t) => t.id !== id); commit(); toast("Transaction deleted"); });
+  $("budget-fields").addEventListener("change", (e) => { const c = e.target.dataset?.cat; if (!c) return; state.budgets[c] = Math.max(0, parseFloat(e.target.value) || 0); commit(); });
+  $("hold-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const value = parseFloat($("h-val").value); if (!(value >= 0)) return;
+    state.holdings.push({ id: uid(), name: $("h-name").value.trim(), cls: $("h-cls").value, value });
+    $("h-name").value = ""; $("h-val").value = ""; commit(); toast("Holding added");
+  });
+  $("hold-body").addEventListener("click", (e) => { const id = e.target.dataset?.hdel; if (!id) return; state.holdings = state.holdings.filter((h) => h.id !== id); commit(); });
+  const profileInputs = { "p-age": "age", "p-horizon": "horizon", "p-emerg": "emergencyMonths", "p-return": "ret", "p-monthly": "monthly" };
+  for (const [id, k] of Object.entries(profileInputs)) $(id).addEventListener("change", (e) => {
+    const v = parseFloat(e.target.value);
+    state.profile[k] = Number.isFinite(v) ? Math.max(k === "horizon" || k === "emergencyMonths" ? 1 : 0, Math.min(k === "horizon" ? 50 : 1e12, v)) : (k === "monthly" ? null : state.profile[k]);
+    commit();
+  });
+  $("p-risk").addEventListener("change", (e) => { state.profile.risk = e.target.value; commit(); });
+
+  // CSV import
+  const KEYWORDS = { Housing: /rent|mortgage|landlord|hoa/i, Food: /grocer|restaurant|cafe|coffee|food|swiggy|zomato|uber ?eats|doordash|market|pizza|dinner|lunch/i, Transport: /fuel|gas station|petrol|uber|lyft|ola|transit|metro|parking|train|bus/i, Utilities: /electric|water|internet|phone|mobile|broadband|utility|gas bill/i, Shopping: /amazon|flipkart|walmart|target|store|shop|mall/i, Health: /pharm|doctor|clinic|hospital|gym|health|dental/i, Fun: /netflix|spotify|movie|cinema|concert|game|prime|disney/i };
+  const guessCat = (d) => CATS.find((c) => KEYWORDS[c]?.test(d)) || "Other";
+  function parseCSV(text) {
+    const rows = []; let row = [], cell = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) { if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') q = false; else cell += ch; }
+      else if (ch === '"') q = true; else if (ch === ",") { row.push(cell); cell = ""; }
+      else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+      else cell += ch;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows.filter((r) => r.some((c) => c.trim()));
+  }
+  function toISO(s) {
+    s = s.trim(); let m;
+    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+    if ((m = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/))) {
+      const yr = m[3].length === 2 ? "20" + m[3] : m[3];
+      let a = +m[1], b = +m[2];
+      // USD files are usually month-first; everything else day-first. Swap when one reading is impossible.
+      const [mo, d] = state.currency === "USD" && a <= 12 ? [a, b] : b <= 12 ? [b, a] : [a, b];
+      return `${yr}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+    const d = new Date(s); return isNaN(d) ? null : iso(d);
+  }
+  $("csv-file").addEventListener("change", (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = parseCSV(String(reader.result)); if (rows.length < 2) return toast("That file has no rows to import");
+      const head = rows[0].map((h) => h.trim().toLowerCase());
+      const col = (...names) => head.findIndex((h) => names.some((n) => h.includes(n)));
+      const di = col("date"), de = col("description", "narration", "details", "memo", "payee", "name"), am = col("amount"), ca = col("category"), dr = col("debit", "withdrawal"), cr = col("credit", "deposit");
+      if (di < 0 || de < 0 || (am < 0 && dr < 0)) return toast("Couldn't find date, description and amount columns");
+      if (state.example) state = emptyState(state.currency);
+      let n = 0;
+      for (const r of rows.slice(1)) {
+        const date = toISO(r[di] || ""); if (!date) continue;
+        const num = (s) => parseFloat(String(s || "").replace(/[^0-9.\-]/g, "")) || 0;
+        let amt = am >= 0 ? num(r[am]) : num(r[cr]) - num(r[dr]);
+        if (!amt) continue;
+        const desc = (r[de] || "").trim() || "Imported";
+        const given = ca >= 0 ? CATS.find((c) => c.toLowerCase() === String(r[ca]).trim().toLowerCase()) : null;
+        state.txns.push(amt > 0 ? { id: uid(), date, desc, cat: INCOME_CAT, type: "income", amount: amt } : { id: uid(), date, desc, cat: given || guessCat(desc), type: "expense", amount: -amt });
+        n++; month = ym(date);
+      }
+      e.target.value = ""; commit(); toast(`Imported ${n} transactions`);
+    };
+    reader.readAsText(file);
+  });
+
+  // Backup
+  $("copy-backup").addEventListener("click", () => {
+    const text = JSON.stringify(state); $("backup-text").value = text;
+    const fallback = () => { $("backup-text").select(); toast("Backup is in the box below. Copy it from there."); };
+    try { navigator.clipboard.writeText(text).then(() => toast("Backup copied"), fallback); } catch (err) { fallback(); }
+  });
+  $("restore-backup").addEventListener("click", () => {
+    try { const s = JSON.parse($("backup-text").value); if (!s || !Array.isArray(s.txns)) throw 0; state = normalize(s); save(); render(); toast("Backup restored"); }
+    catch (err) { toast("That text isn't a Money Ledger backup. Paste the full text from Copy backup."); }
+  });
+  let armed = false;
+  $("reset-all").addEventListener("click", (e) => {
+    if (!armed) { armed = true; e.target.textContent = "Click again to erase"; setTimeout(() => { armed = false; e.target.textContent = "Erase everything"; }, 4000); return; }
+    armed = false; e.target.textContent = "Erase everything"; state = emptyState(state.currency); save(); render(); toast("All data erased");
+  });
+
+  $("f-date").value = iso(today);
+  fillCatSelect();
+  $("h-cls").innerHTML = CLASSES.map((c) => `<option>${c}</option>`).join("");
+  render();
+})();
+</script>
+</body>
+</html>
