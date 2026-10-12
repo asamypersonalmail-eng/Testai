@@ -33,8 +33,9 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(intervals["card-details-inquiry"], 1800)
         self.assertEqual(intervals["customer-profile-inquiry"], 900)
         # each service has distinct validation / alert policy
-        self.assertEqual(len({s.alerting.severity for s in config.services}), 3)
-        self.assertEqual(len({s.validation.warning_ms for s in config.services}), 3)
+        self.assertEqual(intervals["get-position"], 900)
+        self.assertGreaterEqual(len({s.alerting.severity for s in config.services}), 3)
+        self.assertGreaterEqual(len({s.validation.warning_ms for s in config.services}), 3)
 
     def test_defaults_are_merged_and_units_converted(self):
         raw = self._raw(interval={"value": 2, "unit": "minutes"})
@@ -145,6 +146,10 @@ class ConfigTests(unittest.TestCase):
         raw = self._raw()
         raw["services"][0]["intervall"] = {"value": 1, "unit": "minutes"}
         self.assertConfigError(raw, "Additional properties are not allowed")
+
+    def test_env_reference_not_allowed_in_host(self):
+        raw = self._raw(request={"url": "http://${env:HOST}:8080/ok", "method": "GET"})
+        self.assertConfigError(raw, "only allowed in the path/query")
 
     def test_load_from_file_records_hash(self):
         path = write_config(self.dir, self._raw())

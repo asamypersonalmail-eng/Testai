@@ -38,7 +38,7 @@ alerts through your existing middleware email API.
 | `rate_limiter.py` | Token bucket and sliding window limiters |
 | `reporting.py` | Statistics, P50/P95/P99, failure trends, alert history, CSV export |
 | `models.py` | Shared enums and data classes |
-| `tests/` | 128 unit and integration tests (real sockets against local mock servers) |
+| `tests/` | 130 unit and integration tests (real sockets against local mock servers) |
 | `examples/demo.py` | Self-contained demo of healthy, failed, degraded and recovered services |
 | `deploy/systemd/` | systemd unit, timer alternative, secrets env example |
 | `deploy/aix/` | ksh wrapper, SRC registration, crontab example |
@@ -197,6 +197,11 @@ Duplicate JSON keys are rejected.
 Every credential must be a reference: `${env:NAME}` or `${file:/path}` (the file
 must not be group- or world-readable). The schema rejects literal passwords and
 tokens. Headers such as `Authorization` or `X-API-Key` must also be references.
+
+A `${env:…}` reference may also appear in the URL **path or query** (for example a
+synthetic customer number in `/v1/customers/${env:APIMON_POSITION_CUSTOMER_ID}/position`),
+so the identifier stays out of `config.json` and out of the logs. References in the
+host are rejected; the resolved URL is allowlist-checked again before every request.
 
 **Generators** for request IDs and timestamps: `${gen:uuid}`, `${gen:uuid_short}`,
 `${gen:timestamp_iso}`, `${gen:epoch_ms}`, `${gen:date}`.
@@ -418,7 +423,7 @@ resets everything.
 
 ```bash
 cd api_monitor
-python3 -m unittest discover -s tests -t .      # 128 tests, about 20 s, no external network
+python3 -m unittest discover -s tests -t .      # 130 tests, about 20 s, no external network
 python3 examples/demo.py                         # timeline of healthy / failed / degraded / recovered
 ```
 

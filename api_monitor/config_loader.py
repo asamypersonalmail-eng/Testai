@@ -239,13 +239,14 @@ def sanitize_endpoint(url: str) -> str:
     """Endpoint identifier safe for logs and e-mails: no query string, numbers masked."""
     try:
         parts = urlsplit(url)
+        port_value = parts.port
     except ValueError:
         return "<invalid-url>"
     segments = []
     for seg in parts.path.split("/"):
         digits = sum(ch.isdigit() for ch in seg)
         segments.append("{id}" if digits >= 6 else seg)
-    port = f":{parts.port}" if parts.port else ""
+    port = f":{port_value}" if port_value else ""
     return f"{parts.scheme}://{parts.hostname}{port}{'/'.join(segments)}"
 
 
@@ -282,6 +283,8 @@ def _build_service(raw_svc: Dict[str, Any], defaults: Dict[str, Any], top: Dict[
     method = request["method"].upper()
     if method not in security["allowed_methods"]:
         errors.append(f"{prefix}: method {method} is not in security.allowed_methods")
+    if "${" in urlsplit(request["url"]).netloc or "${" in urlsplit(request["url"]).scheme:
+        errors.append(f"{prefix}: url: ${{...}} references are only allowed in the path/query, not the host")
     reason = allowlist.check(request["url"])
     if reason:
         errors.append(f"{prefix}: url rejected: {reason}")

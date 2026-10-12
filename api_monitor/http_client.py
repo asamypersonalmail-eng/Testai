@@ -170,17 +170,19 @@ class SecureHttpClient:
         method = spec.method.upper()
         if method not in self.allowed_methods and method not in extra_methods:
             return AttemptResult(None, FailureClass.CONFIGURATION_ERROR, f"method {method} not allowed", 0.0)
-        reason = self.allowlist.check(spec.url)
-        if reason:
-            return AttemptResult(None, FailureClass.CONFIGURATION_ERROR, f"blocked by allowlist: {reason}", 0.0)
-
         try:
+            # ${env:...} is allowed in the URL path/query (e.g. a synthetic customer id), never in the host.
+            resolved_url = resolve(spec.url)
             headers = resolve(dict(spec.headers))
             params = resolve(dict(spec.query_params))
             auth_cfg = resolve(dict(spec.auth))
             body = (resolve(spec.body) if spec.resolve_body else spec.body) if spec.body else None
         except SecretResolutionError as exc:
             return AttemptResult(None, FailureClass.CONFIGURATION_ERROR, f"secret resolution failed: {exc}", 0.0)
+
+        reason = self.allowlist.check(resolved_url)
+        if reason:
+            return AttemptResult(None, FailureClass.CONFIGURATION_ERROR, f"blocked by allowlist: {reason}", 0.0)
 
         basic = _apply_auth(auth_cfg, headers)
         kwargs: Dict[str, Any] = {"headers": headers, "params": params or None, "auth": basic}
@@ -194,7 +196,7 @@ class SecureHttpClient:
                     headers.setdefault("Content-Type", body["content_type"])
 
         session = self._new_session(spec)
-        url = spec.url
+        url = resolved_url
         redirects = 0
         try:
             while True:

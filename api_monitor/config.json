@@ -50,9 +50,10 @@
     "allowed_hosts": [
       "esb-gw.prod.bank.internal:8443",
       "soap-gw.prod.bank.internal:9443",
-      "mail-api.esb.prod.bank.internal"
+      "mail-api.esb.prod.bank.internal",
+      "position-api.prod.bank.internal:9999"
     ],
-    "allowed_schemes": ["https"],
+    "allowed_schemes": ["https", "http"],
     "allowed_methods": ["GET", "POST"],
     "allow_redirects": false,
     "forbidden_url_keywords": ["transfer", "payment", "debit", "credit-transfer", "withdraw", "reversal", "delete", "update", "create"],
@@ -257,6 +258,42 @@
         "reminder_interval_seconds": 7200,
         "alert_on_slow_response": false,
         "recipients": ["integration-support@bank.example", "cards-support@bank.example"]
+      }
+    },
+    {
+      "id": "get-position",
+      "name": "getPosition",
+      "description": "Customer position inquiry (GET). Healthy when HTTP 200 and the response contains data. The plain-HTTP endpoint is why 'http' is in security.allowed_schemes - remove it once the endpoint moves to HTTPS.",
+      "enabled": true,
+      "operation_type": "INQUIRY",
+      "read_only": true,
+      "endpoint_label": "getPosition /v1/customers/{id}/position",
+      "request": {
+        "url": "http://position-api.prod.bank.internal:9999/v1/customers/${env:APIMON_POSITION_CUSTOMER_ID}/position",
+        "method": "GET",
+        "headers": {"Accept": "application/json", "X-Request-Id": "${gen:uuid}"},
+        "query_params": {"online": "true"}
+      },
+      "interval": {"value": 15, "unit": "minutes"},
+      "timeout": {"connect_seconds": 5, "read_seconds": 15, "total_seconds": 20},
+      "retry": {"max_attempts": 2, "backoff_initial_seconds": 5, "max_total_seconds": 60},
+      "validation": {
+        "expected_status": [200],
+        "body_format": "json",
+        "rules": {
+          "all": [
+            {"type": "json_exists", "path": "$.data", "description": "response contains data"},
+            {"type": "json_min_items", "path": "$.data", "min": 1, "description": "data is not empty"}
+          ]
+        }
+      },
+      "response_time": {"warning_ms": 3000, "critical_ms": 15000},
+      "alerting": {
+        "severity": "HIGH",
+        "failure_threshold": 2,
+        "recovery_threshold": 2,
+        "suppression_interval_seconds": 1800,
+        "reminder_interval_seconds": 3600
       }
     },
     {
