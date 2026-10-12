@@ -486,7 +486,7 @@ def load_config(path: str) -> AppConfig:
     except OSError as exc:
         raise ConfigError([f"cannot read configuration file '{path}': {exc.strerror or exc}"]) from None
     try:
-        raw = json.loads(data.decode("utf-8"), object_pairs_hook=_reject_duplicate_keys)
+        raw = json.loads(data.decode("utf-8-sig"), object_pairs_hook=_reject_duplicate_keys)  # tolerate Windows BOM
     except UnicodeDecodeError:
         raise ConfigError(["configuration file is not valid UTF-8"]) from None
     except ValueError as exc:

@@ -138,6 +138,13 @@ class ConfigTests(unittest.TestCase):
             load_config(path)
         self.assertIn("invalid JSON", ctx.exception.errors[0])
 
+    def test_utf8_bom_accepted(self):
+        path = os.path.join(self.dir, "bom.json")
+        import json as _json
+        with open(path, "w", encoding="utf-8-sig") as handle:  # what some Windows editors write
+            _json.dump(self._raw(), handle)
+        self.assertEqual(load_config(path).services[0].id, "svc-a")
+
     def test_missing_file(self):
         with self.assertRaises(ConfigError):
             load_config(os.path.join(self.dir, "nope.json"))
