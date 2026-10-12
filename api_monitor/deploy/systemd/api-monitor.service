@@ -1,0 +1,53 @@
+# /etc/systemd/system/api-monitor.service
+# Install:  systemctl daemon-reload && systemctl enable --now api-monitor
+# Reload :  systemctl reload api-monitor      (SIGHUP -> validated config reload)
+# Logs   :  /var/log/api-monitor/monitor.log, events.log (JSON lines)
+
+[Unit]
+Description=API Synthetic Monitoring and Alerting
+Documentation=file:///opt/api-monitor/README.md
+After=network-online.target
+Wants=network-online.target
+# Stop restarting after 5 crashes in 10 minutes (avoid restart storms).
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=apimon
+Group=apimon
+WorkingDirectory=/opt/api-monitor
+# Secrets (APIMON_*): root-owned, mode 0600, never committed to version control.
+EnvironmentFile=/etc/api-monitor/secrets.env
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/opt/api-monitor/venv/bin/python /opt/api-monitor/monitor.py -c /etc/api-monitor/config.json validate --check-secrets
+ExecStart=/opt/api-monitor/venv/bin/python /opt/api-monitor/monitor.py -c /etc/api-monitor/config.json run
+ExecReload=/bin/kill -HUP $MAINPID
+KillSignal=SIGTERM
+TimeoutStopSec=90
+Restart=on-failure
+RestartSec=30
+# 2 = configuration error, 3 = another instance holds the lock: restarting will not help.
+RestartPreventExitStatus=2 3
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/api-monitor /var/log/api-monitor
+ReadOnlyPaths=/etc/api-monitor /opt/api-monitor
+UMask=0027
+LimitNOFILE=1024
+TasksMax=64
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+# Alternative to the long-running service: one cycle per timer tick.
+# Use EITHER api-monitor.service OR this timer pair, never both.
+[Unit]
+Description=API Synthetic Monitoring - single cycle
+
+[Service]
+Type=oneshot
+User=apimon
+Group=apimon
+EnvironmentFile=/etc/api-monitor/secrets.env
+ExecStart=/opt/api-monitor/venv/bin/python /opt/api-monitor/monitor.py -c /etc/api-monitor/config.json once
+# exit 1 = at least one check failed (alerting already handled) - not a unit failure
+SuccessExitStatus=1 3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/api-monitor /var/log/api-monitor

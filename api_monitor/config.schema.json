@@ -1,0 +1,361 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://internal.example/api-monitor/config.schema.json",
+  "title": "API Synthetic Monitor configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["config_version", "environment", "security", "logging", "state", "runtime", "notifications", "services"],
+  "properties": {
+    "$comment": {"type": "string"},
+    "config_version": {"const": 1},
+    "environment": {"type": "string", "enum": ["PROD", "UAT", "SIT", "DEV", "DR"]},
+    "monitor_host_id": {"type": ["string", "null"], "maxLength": 128},
+    "monitoring_enabled": {"type": "boolean"},
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "interval": {"$ref": "#/$defs/interval"},
+        "timeout": {"$ref": "#/$defs/timeout"},
+        "retry": {"$ref": "#/$defs/retry"},
+        "response_time": {"$ref": "#/$defs/responseTime"},
+        "alerting": {"$ref": "#/$defs/alerting"},
+        "expected_status": {"$ref": "#/$defs/statusList"}
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_concurrent_checks": {"type": "integer", "minimum": 1, "maximum": 32},
+        "max_requests_per_cycle": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "max_requests_per_minute": {"type": "integer", "minimum": 1, "maximum": 600},
+        "max_retries_per_minute": {"type": "integer", "minimum": 0, "maximum": 300},
+        "max_response_bytes": {"type": "integer", "minimum": 1024, "maximum": 20971520},
+        "min_interval_seconds": {"type": "number", "minimum": 10},
+        "scheduler_tick_seconds": {"type": "number", "minimum": 0.1, "maximum": 10},
+        "startup_jitter_seconds": {"type": "number", "minimum": 0, "maximum": 3600},
+        "schedule_jitter_seconds": {"type": "number", "minimum": 0, "maximum": 600},
+        "shutdown_grace_seconds": {"type": "number", "minimum": 1, "maximum": 600}
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_hosts"],
+      "properties": {
+        "allowed_hosts": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^(\\*\\.)?[A-Za-z0-9.\\-\\[\\]:]+(:(\\d{1,5}|\\*))?$"}
+        },
+        "allowed_schemes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["https", "http"]}},
+        "allowed_methods": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["GET", "POST", "HEAD"]}},
+        "allow_redirects": {"type": "boolean"},
+        "forbidden_url_keywords": {"type": "array", "items": {"type": "string", "minLength": 2}},
+        "ca_bundle": {"type": ["string", "null"]},
+        "use_environment_proxies": {"type": "boolean"},
+        "proxies": {
+          "type": "object", "additionalProperties": false,
+          "properties": {"http": {"type": "string"}, "https": {"type": "string"}}
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directory"],
+      "properties": {
+        "directory": {"type": "string", "minLength": 1},
+        "level": {"enum": ["DEBUG", "INFO", "WARNING", "ERROR"]},
+        "rotation": {"const": "daily"},
+        "retention_days": {"type": "integer", "minimum": 1, "maximum": 3650},
+        "event_history_retention_days": {"type": "integer", "minimum": 1, "maximum": 3650},
+        "console": {"type": "boolean"}
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directory"],
+      "properties": {
+        "directory": {"type": "string", "minLength": 1},
+        "file": {"type": "string", "pattern": "^[A-Za-z0-9_.\\-]+$"}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lock_file"],
+      "properties": {"lock_file": {"type": "string", "minLength": 1}}
+    },
+    "reload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "watch_interval_seconds": {"type": "number", "minimum": 5, "maximum": 3600},
+        "on_sighup": {"type": "boolean"}
+      }
+    },
+    "reporting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "history_size": {"type": "integer", "minimum": 10, "maximum": 10000},
+        "stats_log_interval_seconds": {"type": "number", "minimum": 0},
+        "csv_summary_path": {"type": ["string", "null"]}
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "email_api"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "recovery_notifications": {"type": "boolean"},
+        "max_emails_per_hour": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "sender": {"type": "string"},
+        "default_recipients": {"$ref": "#/$defs/emailList"},
+        "default_cc": {"$ref": "#/$defs/emailList"},
+        "subject_template": {"type": "string", "minLength": 1, "maxLength": 300},
+        "body_template": {"type": ["string", "null"]},
+        "body_format": {"enum": ["text", "html"]},
+        "email_api": {"$ref": "#/$defs/emailApi"}
+      }
+    },
+    "services": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {"$ref": "#/$defs/service"}
+    }
+  },
+  "$defs": {
+    "secretRef": {
+      "type": "string",
+      "pattern": "^\\$\\{(env|file):[^}]+\\}$",
+      "description": "Secrets must be references, never literal values."
+    },
+    "email": {"type": "string", "pattern": "^[^@\\s]+@[^@\\s]+$"},
+    "emailList": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/email"}},
+    "statusList": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"type": "integer", "minimum": 100, "maximum": 599}
+    },
+    "stringMap": {"type": "object", "additionalProperties": {"type": "string"}},
+    "interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "unit"],
+      "properties": {
+        "value": {"type": "number", "exclusiveMinimum": 0},
+        "unit": {"enum": ["seconds", "minutes", "hours"]}
+      }
+    },
+    "timeout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "connect_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 60},
+        "read_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 300},
+        "total_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 600}
+      }
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_attempts": {"type": "integer", "minimum": 1, "maximum": 5},
+        "backoff_initial_seconds": {"type": "number", "minimum": 0, "maximum": 60},
+        "backoff_max_seconds": {"type": "number", "minimum": 0, "maximum": 300},
+        "backoff_multiplier": {"type": "number", "minimum": 1, "maximum": 5},
+        "jitter_seconds": {"type": "number", "minimum": 0, "maximum": 30},
+        "max_total_seconds": {"type": "number", "minimum": 1, "maximum": 900},
+        "retry_on": {
+          "type": "array", "uniqueItems": true,
+          "items": {"enum": ["CONNECTION_ERROR", "TIMEOUT", "DNS_ERROR", "HTTP_5XX", "INVALID_RESPONSE", "RESPONSE_VALIDATION_FAILED"]}
+        },
+        "retry_when_down": {"type": "boolean"}
+      }
+    },
+    "responseTime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "warning_ms": {"type": ["number", "null"], "minimum": 1},
+        "critical_ms": {"type": ["number", "null"], "minimum": 1}
+      }
+    },
+    "alerting": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "severity": {"enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]},
+        "failure_threshold": {"type": "integer", "minimum": 1, "maximum": 50},
+        "recovery_threshold": {"type": "integer", "minimum": 1, "maximum": 50},
+        "suppression_interval_seconds": {"type": "number", "minimum": 0},
+        "reminder_interval_seconds": {"type": "number", "minimum": 0},
+        "alert_on_slow_response": {"type": "boolean"},
+        "slow_response_threshold": {"type": "integer", "minimum": 1, "maximum": 50},
+        "send_recovery": {"type": "boolean"},
+        "recipients": {"$ref": "#/$defs/emailList"},
+        "cc": {"$ref": "#/$defs/emailList"}
+      }
+    },
+    "auth": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {"properties": {"type": {"const": "none"}}, "additionalProperties": false},
+        {
+          "properties": {"type": {"const": "basic"}, "username": {"type": "string", "minLength": 1}, "password": {"$ref": "#/$defs/secretRef"}},
+          "required": ["username", "password"], "additionalProperties": false
+        },
+        {
+          "properties": {"type": {"const": "bearer"}, "token": {"$ref": "#/$defs/secretRef"}},
+          "required": ["token"], "additionalProperties": false
+        },
+        {
+          "properties": {"type": {"const": "api_key"}, "header": {"type": "string", "minLength": 1}, "value": {"$ref": "#/$defs/secretRef"}},
+          "required": ["header", "value"], "additionalProperties": false
+        }
+      ]
+    },
+    "clientCert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cert_file", "key_file"],
+      "properties": {"cert_file": {"type": "string"}, "key_file": {"type": "string"}}
+    },
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "content"],
+      "properties": {
+        "type": {"enum": ["json", "raw"]},
+        "content": {},
+        "content_type": {"type": "string"}
+      }
+    },
+    "rule": {
+      "type": "object",
+      "properties": {
+        "all": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/rule"}},
+        "any": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/rule"}},
+        "not": {"$ref": "#/$defs/rule"},
+        "type": {
+          "enum": [
+            "json_exists", "json_not_exists", "json_equals", "json_not_equals", "json_in", "json_regex", "json_min_items",
+            "xml_exists", "xml_not_exists", "xml_equals", "xml_in", "xml_regex", "soap_no_fault",
+            "header_equals", "header_regex", "body_contains"
+          ]
+        },
+        "description": {"type": "string"},
+        "path": {"type": "string"},
+        "xpath": {"type": "string"},
+        "attribute": {"type": "string"},
+        "name": {"type": "string"},
+        "value": {},
+        "values": {"type": "array", "minItems": 1},
+        "pattern": {"type": "string", "maxLength": 256},
+        "min": {"type": "integer", "minimum": 0},
+        "quantifier": {"enum": ["all", "any"]},
+        "sensitive": {"type": "boolean"},
+        "negate": {"type": "boolean"}
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {"required": ["all"]},
+        {"required": ["any"]},
+        {"required": ["not"]},
+        {"required": ["type"]}
+      ]
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expected_status": {"$ref": "#/$defs/statusList"},
+        "content_type": {"type": ["string", "null"]},
+        "body_format": {"enum": ["json", "xml", "text", "none"]},
+        "namespaces": {"$ref": "#/$defs/stringMap"},
+        "rules": {"$ref": "#/$defs/rule"}
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "method"],
+      "properties": {
+        "url": {"type": "string", "pattern": "^https?://"},
+        "method": {"enum": ["GET", "POST", "HEAD"]},
+        "headers": {"$ref": "#/$defs/stringMap"},
+        "query_params": {"$ref": "#/$defs/stringMap"},
+        "body": {"$ref": "#/$defs/body"},
+        "auth": {"$ref": "#/$defs/auth"},
+        "follow_redirects": {"type": "boolean"},
+        "max_redirects": {"type": "integer", "minimum": 0, "maximum": 5},
+        "ca_bundle": {"type": ["string", "null"]},
+        "client_cert": {"$ref": "#/$defs/clientCert"}
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "operation_type", "read_only", "request", "validation"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_.\\-]{0,63}$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 120},
+        "description": {"type": "string"},
+        "enabled": {"type": "boolean"},
+        "operation_type": {"const": "INQUIRY", "description": "Only read-only inquiry operations may be monitored."},
+        "read_only": {"const": true},
+        "endpoint_label": {"type": "string", "maxLength": 200},
+        "request": {"$ref": "#/$defs/request"},
+        "interval": {"$ref": "#/$defs/interval"},
+        "timeout": {"$ref": "#/$defs/timeout"},
+        "retry": {"$ref": "#/$defs/retry"},
+        "validation": {"$ref": "#/$defs/validation"},
+        "response_time": {"$ref": "#/$defs/responseTime"},
+        "alerting": {"$ref": "#/$defs/alerting"}
+      }
+    },
+    "emailApi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "method", "payload_format", "payload_template"],
+      "properties": {
+        "url": {"type": "string", "pattern": "^https?://"},
+        "method": {"enum": ["POST", "PUT"]},
+        "headers": {"$ref": "#/$defs/stringMap"},
+        "auth": {"$ref": "#/$defs/auth"},
+        "ca_bundle": {"type": ["string", "null"]},
+        "client_cert": {"$ref": "#/$defs/clientCert"},
+        "connect_timeout_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 30},
+        "read_timeout_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 120},
+        "max_attempts": {"type": "integer", "minimum": 1, "maximum": 3},
+        "retry_backoff_seconds": {"type": "number", "minimum": 0, "maximum": 30},
+        "success_status_codes": {"$ref": "#/$defs/statusList"},
+        "success_body_format": {"enum": ["json", "xml", "text", "none"]},
+        "success_rules": {"$ref": "#/$defs/rule"},
+        "payload_format": {"enum": ["json", "form", "raw"]},
+        "payload_template": {"type": ["object", "string"]},
+        "raw_content_type": {"type": "string"},
+        "raw_escape": {"enum": ["xml", "json", "none"]},
+        "recipient_format": {"enum": ["list", "comma", "semicolon", "object_list"]},
+        "recipient_object_key": {"type": "string"},
+        "recipient_object_extra": {"type": "object"},
+        "severity_priority_map": {"$ref": "#/$defs/stringMap"},
+        "circuit_breaker": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "failure_threshold": {"type": "integer", "minimum": 1, "maximum": 20},
+            "open_seconds": {"type": "number", "minimum": 10, "maximum": 86400}
+          }
+        }
+      }
+    }
+  }
+}

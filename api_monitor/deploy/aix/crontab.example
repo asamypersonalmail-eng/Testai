@@ -1,0 +1,7 @@
+# crontab for user apimon (crontab -e) - single-cycle mode.
+# Run every 5 minutes; each service is only checked when its own JSON interval has
+# elapsed (based on the persisted last-check time), so the 60/30/15-minute schedules
+# in config.json are honoured without one cron line per service.
+# The instance lock makes an overlapping run exit immediately (exit code 3), and the
+# persisted state keeps alert suppression / reminders / recovery working across runs.
+1,6,11,16,21,26,31,36,41,46,51,56 * * * * /opt/api-monitor/deploy/aix/api-monitor.sh once >/dev/null 2>&1

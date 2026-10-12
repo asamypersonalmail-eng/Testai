@@ -1,0 +1,311 @@
+{
+  "$comment": "Sample configuration. Hostnames, paths, test identifiers and the e-mail API contract are placeholders - replace them with the values approved for your environment. Secrets are ${env:NAME} or ${file:/path} references only.",
+  "config_version": 1,
+  "environment": "PROD",
+  "monitor_host_id": null,
+  "monitoring_enabled": true,
+
+  "defaults": {
+    "interval": {"value": 15, "unit": "minutes"},
+    "timeout": {"connect_seconds": 5, "read_seconds": 20, "total_seconds": 30},
+    "expected_status": [200],
+    "retry": {
+      "max_attempts": 2,
+      "backoff_initial_seconds": 5,
+      "backoff_max_seconds": 30,
+      "backoff_multiplier": 2,
+      "jitter_seconds": 3,
+      "max_total_seconds": 120,
+      "retry_on": ["CONNECTION_ERROR", "TIMEOUT", "HTTP_5XX"],
+      "retry_when_down": false
+    },
+    "response_time": {"warning_ms": 3000, "critical_ms": 15000},
+    "alerting": {
+      "enabled": true,
+      "severity": "HIGH",
+      "failure_threshold": 2,
+      "recovery_threshold": 2,
+      "suppression_interval_seconds": 1800,
+      "reminder_interval_seconds": 7200,
+      "alert_on_slow_response": false,
+      "slow_response_threshold": 3,
+      "send_recovery": true
+    }
+  },
+
+  "limits": {
+    "max_concurrent_checks": 3,
+    "max_requests_per_cycle": 10,
+    "max_requests_per_minute": 20,
+    "max_retries_per_minute": 6,
+    "max_response_bytes": 524288,
+    "min_interval_seconds": 300,
+    "scheduler_tick_seconds": 1,
+    "startup_jitter_seconds": 60,
+    "schedule_jitter_seconds": 15,
+    "shutdown_grace_seconds": 45
+  },
+
+  "security": {
+    "allowed_hosts": [
+      "esb-gw.prod.bank.internal:8443",
+      "soap-gw.prod.bank.internal:9443",
+      "mail-api.esb.prod.bank.internal"
+    ],
+    "allowed_schemes": ["https"],
+    "allowed_methods": ["GET", "POST"],
+    "allow_redirects": false,
+    "forbidden_url_keywords": ["transfer", "payment", "debit", "credit-transfer", "withdraw", "reversal", "delete", "update", "create"],
+    "ca_bundle": "/etc/api-monitor/certs/internal-ca-chain.pem",
+    "use_environment_proxies": false
+  },
+
+  "logging": {
+    "directory": "/var/log/api-monitor",
+    "level": "INFO",
+    "rotation": "daily",
+    "retention_days": 30,
+    "event_history_retention_days": 180,
+    "console": false
+  },
+
+  "state": {
+    "directory": "/var/lib/api-monitor",
+    "file": "health_state.json"
+  },
+
+  "runtime": {
+    "lock_file": "/var/lib/api-monitor/monitor.lock"
+  },
+
+  "reload": {
+    "enabled": true,
+    "watch_interval_seconds": 60,
+    "on_sighup": true
+  },
+
+  "reporting": {
+    "history_size": 500,
+    "stats_log_interval_seconds": 3600,
+    "csv_summary_path": "/var/lib/api-monitor/reports/summary.csv"
+  },
+
+  "notifications": {
+    "enabled": true,
+    "recovery_notifications": true,
+    "max_emails_per_hour": 20,
+    "sender": "api-monitor-noreply@bank.example",
+    "default_recipients": ["integration-support@bank.example"],
+    "default_cc": [],
+    "subject_template": "[{{environment}}][{{severity}}] {{event_type}}: {{service_name}} is {{state}} ({{classification}})",
+    "body_template": null,
+    "body_format": "text",
+    "email_api": {
+      "url": "https://mail-api.esb.prod.bank.internal/notification/v1/email/send",
+      "method": "POST",
+      "headers": {
+        "Content-Type": "application/json",
+        "X-Channel-Id": "API-MONITOR",
+        "X-Correlation-Id": "${gen:uuid}",
+        "X-API-Key": "${env:APIMON_EMAIL_API_KEY}"
+      },
+      "auth": {"type": "basic", "username": "svc_api_monitor", "password": "${env:APIMON_EMAIL_API_PASSWORD}"},
+      "connect_timeout_seconds": 5,
+      "read_timeout_seconds": 15,
+      "max_attempts": 2,
+      "retry_backoff_seconds": 3,
+      "success_status_codes": [200, 201, 202],
+      "success_body_format": "json",
+      "success_rules": {"type": "json_in", "path": "$.status", "values": ["SUCCESS", "QUEUED", "ACCEPTED"]},
+      "payload_format": "json",
+      "recipient_format": "object_list",
+      "recipient_object_key": "emailAddress",
+      "recipient_object_extra": {"type": "TO"},
+      "severity_priority_map": {"CRITICAL": "URGENT", "HIGH": "HIGH", "MEDIUM": "NORMAL", "LOW": "LOW", "INFO": "NORMAL"},
+      "payload_template": {
+        "header": {
+          "channelId": "API-MONITOR",
+          "requestId": "${gen:uuid}",
+          "requestTimestamp": "${gen:timestamp_iso}"
+        },
+        "email": {
+          "from": "{{sender}}",
+          "to": "{{recipients}}",
+          "cc": "{{cc}}",
+          "subject": "{{subject}}",
+          "body": "{{body}}",
+          "contentType": "{{content_type}}",
+          "priority": "{{priority}}"
+        },
+        "metadata": {
+          "environment": "{{environment}}",
+          "serviceId": "{{service_id}}",
+          "eventType": "{{event_type}}",
+          "alertId": "{{alert_id}}",
+          "incidentId": "{{incident_id}}"
+        }
+      },
+      "circuit_breaker": {"failure_threshold": 3, "open_seconds": 900}
+    }
+  },
+
+  "services": [
+    {
+      "id": "customer-account-inquiry",
+      "name": "Customer Account Inquiry",
+      "description": "ACE REST flow -> core banking account inquiry using an approved synthetic test account.",
+      "enabled": true,
+      "operation_type": "INQUIRY",
+      "read_only": true,
+      "endpoint_label": "ESB-GW AccountInquiry v2",
+      "request": {
+        "url": "https://esb-gw.prod.bank.internal:8443/api/v2/accounts/inquiry",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-Channel-Id": "API-MONITOR",
+          "X-Request-Id": "${gen:uuid}"
+        },
+        "auth": {"type": "bearer", "token": "${env:APIMON_ESB_TOKEN}"},
+        "body": {
+          "type": "json",
+          "content": {
+            "header": {"requestId": "${gen:uuid_short}", "channel": "MONITOR", "timestamp": "${gen:timestamp_iso}"},
+            "accountInquiry": {"accountNumber": "${env:APIMON_TEST_ACCOUNT_NUMBER}", "inquiryType": "BALANCE"}
+          }
+        }
+      },
+      "interval": {"value": 60, "unit": "minutes"},
+      "timeout": {"connect_seconds": 5, "read_seconds": 25, "total_seconds": 30},
+      "retry": {"max_attempts": 2, "max_total_seconds": 120},
+      "validation": {
+        "expected_status": [200],
+        "content_type": "application/json",
+        "body_format": "json",
+        "rules": {
+          "all": [
+            {"type": "json_equals", "path": "$.status", "value": "SUCCESS", "description": "business status"},
+            {"type": "json_not_exists", "path": "$.errorCode", "description": "no business error code"},
+            {"type": "json_exists", "path": "$.data.account.availableBalance", "description": "balance returned"},
+            {"type": "json_in", "path": "$.data.account.accountStatus", "values": ["ACTIVE", "DORMANT"]},
+            {"type": "json_regex", "path": "$.data.account.currency", "pattern": "^[A-Z]{3}$"}
+          ]
+        }
+      },
+      "response_time": {"warning_ms": 4000, "critical_ms": 20000},
+      "alerting": {
+        "severity": "CRITICAL",
+        "failure_threshold": 1,
+        "recovery_threshold": 1,
+        "suppression_interval_seconds": 3600,
+        "reminder_interval_seconds": 14400,
+        "alert_on_slow_response": true,
+        "slow_response_threshold": 2,
+        "recipients": ["integration-support@bank.example", "core-banking-oncall@bank.example"],
+        "cc": ["it-operations-bridge@bank.example"]
+      }
+    },
+    {
+      "id": "card-details-inquiry",
+      "name": "Card Details Inquiry",
+      "description": "DataPower SOAP gateway -> card management system, synthetic test card reference.",
+      "enabled": true,
+      "operation_type": "INQUIRY",
+      "read_only": true,
+      "endpoint_label": "SOAP-GW CardInquiryService",
+      "request": {
+        "url": "https://soap-gw.prod.bank.internal:9443/services/CardInquiryService",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "text/xml; charset=utf-8",
+          "SOAPAction": "\"urn:CardInquiry#getCardDetails\""
+        },
+        "auth": {"type": "basic", "username": "svc_api_monitor", "password": "${env:APIMON_SOAP_PASSWORD}"},
+        "body": {
+          "type": "raw",
+          "content_type": "text/xml; charset=utf-8",
+          "content": "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:card=\"urn:bank:card:inquiry:v1\"><soapenv:Header/><soapenv:Body><card:GetCardDetailsRequest><card:RequestId>${gen:uuid_short}</card:RequestId><card:CardReference>${env:APIMON_TEST_CARD_REFERENCE}</card:CardReference></card:GetCardDetailsRequest></soapenv:Body></soapenv:Envelope>"
+        }
+      },
+      "interval": {"value": 30, "unit": "minutes"},
+      "timeout": {"connect_seconds": 5, "read_seconds": 15, "total_seconds": 20},
+      "retry": {"max_attempts": 2, "backoff_initial_seconds": 10, "retry_on": ["CONNECTION_ERROR", "TIMEOUT"], "max_total_seconds": 90},
+      "validation": {
+        "expected_status": [200],
+        "content_type": "text/xml",
+        "body_format": "xml",
+        "namespaces": {
+          "soapenv": "http://schemas.xmlsoap.org/soap/envelope/",
+          "card": "urn:bank:card:inquiry:v1"
+        },
+        "rules": {
+          "all": [
+            {"type": "soap_no_fault"},
+            {"type": "xml_equals", "xpath": "./soapenv:Body/card:GetCardDetailsResponse/card:Result/card:Code", "value": "00", "description": "result code"},
+            {"type": "xml_in", "xpath": ".//card:CardStatus", "values": ["ACTIVE", "BLOCKED_TEMP"]},
+            {"type": "xml_exists", "xpath": ".//card:ExpiryDate", "sensitive": true}
+          ]
+        }
+      },
+      "response_time": {"warning_ms": 2500, "critical_ms": 10000},
+      "alerting": {
+        "severity": "HIGH",
+        "failure_threshold": 2,
+        "recovery_threshold": 2,
+        "suppression_interval_seconds": 1800,
+        "reminder_interval_seconds": 7200,
+        "alert_on_slow_response": false,
+        "recipients": ["integration-support@bank.example", "cards-support@bank.example"]
+      }
+    },
+    {
+      "id": "customer-profile-inquiry",
+      "name": "Customer Profile Inquiry",
+      "description": "ACE REST flow -> CRM customer profile lookup for the synthetic monitoring customer.",
+      "enabled": true,
+      "operation_type": "INQUIRY",
+      "read_only": true,
+      "endpoint_label": "ESB-GW CustomerProfile v1",
+      "request": {
+        "url": "https://esb-gw.prod.bank.internal:8443/api/v1/customers/profile",
+        "method": "GET",
+        "headers": {"Accept": "application/json", "X-Channel-Id": "API-MONITOR", "X-Request-Id": "${gen:uuid}"},
+        "query_params": {"customerId": "${env:APIMON_TEST_CUSTOMER_ID}", "fields": "basic"},
+        "auth": {"type": "api_key", "header": "X-API-Key", "value": "${env:APIMON_ESB_API_KEY}"}
+      },
+      "interval": {"value": 15, "unit": "minutes"},
+      "timeout": {"connect_seconds": 3, "read_seconds": 10, "total_seconds": 12},
+      "retry": {"max_attempts": 3, "backoff_initial_seconds": 3, "backoff_max_seconds": 12, "max_total_seconds": 90},
+      "validation": {
+        "expected_status": [200],
+        "content_type": "application/json",
+        "body_format": "json",
+        "rules": {
+          "all": [
+            {
+              "any": [
+                {"type": "json_equals", "path": "$.responseCode", "value": "0000"},
+                {"type": "json_equals", "path": "$.result.status", "value": "OK"}
+              ],
+              "description": "success code in either legacy or v1 envelope"
+            },
+            {"type": "json_exists", "path": "$.customer.customerId", "sensitive": true},
+            {"type": "json_regex", "path": "$.customer.segment", "pattern": "^(RETAIL|PRIORITY|CORPORATE)$"},
+            {"not": {"type": "json_in", "path": "$.customer.status", "values": ["CLOSED", "DECEASED"]}}
+          ]
+        }
+      },
+      "response_time": {"warning_ms": 1500, "critical_ms": 8000},
+      "alerting": {
+        "severity": "MEDIUM",
+        "failure_threshold": 3,
+        "recovery_threshold": 2,
+        "suppression_interval_seconds": 1800,
+        "reminder_interval_seconds": 3600,
+        "alert_on_slow_response": true,
+        "slow_response_threshold": 4
+      }
+    }
+  ]
+}
