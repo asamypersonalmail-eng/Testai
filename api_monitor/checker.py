@@ -28,6 +28,7 @@ def build_request_spec(service: ServiceConfig) -> RequestSpec:
         read_timeout=service.read_timeout, total_timeout=service.total_timeout,
         follow_redirects=service.follow_redirects, max_redirects=service.max_redirects,
         ca_bundle=service.ca_bundle, client_cert=service.client_cert, url_label=service.endpoint_label,
+        variables=service.variables,
     )
 
 

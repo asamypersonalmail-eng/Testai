@@ -6,6 +6,8 @@ values reference them:
     ${env:NAME}       value of environment variable NAME
     ${file:/path}     content of a protected file (must not be group/world readable)
     ${gen:uuid}       generated value (uuid, uuid_short, timestamp_iso, epoch_ms, date)
+    ${var:name}       plain configured value from the service's (or global) "variables"
+                      block, e.g. a test customer id; it may itself contain ${env:...}
 
 Every secret resolved through this module is registered so the logging layer
 can redact it if it ever appears in a log record.
@@ -17,11 +19,11 @@ import re
 import stat
 import threading
 import uuid
-from typing import Any, FrozenSet, Iterator, List, Set, Tuple
+from typing import Any, FrozenSet, Iterator, List, Mapping, Optional, Set, Tuple
 
 from models import utc_now
 
-REF_RE = re.compile(r"\$\{(env|file|gen):([^}]+)\}")
+REF_RE = re.compile(r"\$\{(env|file|gen|var):([^}]+)\}")
 PURE_SECRET_REF_RE = re.compile(r"^\$\{(env|file):[^}]+\}$")
 MAX_SECRET_FILE_BYTES = 64 * 1024
 GENERATORS = ("uuid", "uuid_short", "timestamp_iso", "epoch_ms", "date")
@@ -87,11 +89,19 @@ def _generate(name: str) -> str:
     raise SecretResolutionError(f"unknown generator '{name}'")
 
 
-def resolve_string(value: str) -> str:
-    """Replace every ${...} reference in ``value``."""
+def resolve_string(value: str, variables: Optional[Mapping[str, str]] = None) -> str:
+    """Replace every ${...} reference in ``value``.
+
+    ``${var:name}`` is looked up in ``variables``; the variable's own value may contain
+    env/file/gen references (resolved once, no nested ${var:...}).
+    """
 
     def _replace(match: "re.Match[str]") -> str:
         kind, ref = match.group(1), match.group(2).strip()
+        if kind == "var":
+            if variables is None or ref not in variables:
+                raise SecretResolutionError(f"variable '{ref}' is not defined")
+            return resolve_string(str(variables[ref]))  # no variables here: nested ${var:} is an error
         if kind == "env":
             resolved = os.environ.get(ref)
             if resolved is None:
@@ -107,14 +117,14 @@ def resolve_string(value: str) -> str:
     return REF_RE.sub(_replace, value)
 
 
-def resolve(obj: Any) -> Any:
+def resolve(obj: Any, variables: Optional[Mapping[str, str]] = None) -> Any:
     """Recursively resolve references in strings inside dicts/lists."""
     if isinstance(obj, str):
-        return resolve_string(obj)
+        return resolve_string(obj, variables)
     if isinstance(obj, dict):
-        return {key: resolve(val) for key, val in obj.items()}
+        return {key: resolve(val, variables) for key, val in obj.items()}
     if isinstance(obj, list):
-        return [resolve(item) for item in obj]
+        return [resolve(item, variables) for item in obj]
     return obj
 
 

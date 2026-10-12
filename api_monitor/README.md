@@ -37,7 +37,7 @@ Requires Python 3.8+ from python.org, with "Add python.exe to PATH" ticked.
 py -3 -m venv venv
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 
-# 1. Prove it works (no network needed): 130 tests plus a demo
+# 1. Prove it works (no network needed): 136 tests plus a demo
 .\venv\Scripts\python.exe -m unittest discover -s tests -t .
 .\venv\Scripts\python.exe examples\demo.py
 
@@ -50,7 +50,6 @@ copy config.json my-config.json
 #    (in JSON every backslash is written twice, or use forward slashes: C:/ProgramData/api-monitor/logs)
 
 # 3. Secrets for this PowerShell window only
-$env:APIMON_POSITION_CUSTOMER_ID = "<synthetic test customer id>"
 $env:APIMON_EMAIL_API_KEY = "..."
 
 # 4. Validate, try one service, then run
@@ -86,7 +85,7 @@ python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 ./venv/bin/python -m unittest discover -s tests -t .
 cp config.json my-config.json             # edit paths, hosts, recipients
-export APIMON_POSITION_CUSTOMER_ID=...    # and the other APIMON_* secrets
+export APIMON_EMAIL_API_KEY=...           # and the other APIMON_* secrets
 ./venv/bin/python monitor.py -c my-config.json validate --check-secrets
 ./venv/bin/python monitor.py -c my-config.json check get-position
 ./venv/bin/python monitor.py -c my-config.json --console run
@@ -117,7 +116,7 @@ For a permanent installation, see section 2 (systemd, AIX SRC, cron).
 | `reporting.py` | Statistics, P50/P95/P99, failure trends, alert history, CSV export |
 | `models.py` | Shared enums and data classes |
 | `platform_compat.py` | Cross-platform file locking (`fcntl` on Linux/AIX, `msvcrt` on Windows) |
-| `tests/` | 130 unit and integration tests (real sockets against local mock servers) |
+| `tests/` | 136 unit and integration tests (real sockets against local mock servers) |
 | `examples/demo.py` | Self-contained demo of healthy, failed, degraded and recovered services |
 | `deploy/systemd/` | systemd unit, timer alternative, secrets env example |
 | `deploy/aix/` | ksh wrapper, SRC registration, crontab example |
@@ -278,10 +277,25 @@ Every credential must be a reference: `${env:NAME}` or `${file:/path}` (the file
 must not be group- or world-readable). The schema rejects literal passwords and
 tokens. Headers such as `Authorization` or `X-API-Key` must also be references.
 
-A `${env:…}` reference may also appear in the URL **path or query** (for example a
-synthetic customer number in `/v1/customers/${env:APIMON_POSITION_CUSTOMER_ID}/position`),
-so the identifier stays out of `config.json` and out of the logs. References in the
-host are rejected; the resolved URL is allowlist-checked again before every request.
+**Variables** hold plain configured values such as a test customer number. Define
+them per service (or globally at the top level, where a service's own `variables`
+override global ones) and reference them as `${var:name}` in the URL path or query,
+headers, query parameters or body:
+
+```json
+"variables": {"customer_id": "1000649149"},
+"request": {
+  "url": "http://172.17.55.101:2027/v1/customers/${var:customer_id}/position",
+  "method": "GET",
+  "query_params": {"online": "true"}
+}
+```
+
+A referenced variable that is not defined is a configuration error. A variable's
+value may itself be `${env:…}`, for when the value should come from the environment
+instead of the file. References are rejected in the URL host, and the resolved URL is
+allowlist-checked again before every request. Logs show `endpoint_label` instead of
+the URL, and long digit runs are masked, so the customer number doesn't appear in logs.
 
 **Generators** for request IDs and timestamps: `${gen:uuid}`, `${gen:uuid_short}`,
 `${gen:timestamp_iso}`, `${gen:epoch_ms}`, `${gen:date}`.
@@ -503,7 +517,7 @@ resets everything.
 
 ```bash
 cd api_monitor
-python3 -m unittest discover -s tests -t .      # 130 tests, about 20 s, no external network
+python3 -m unittest discover -s tests -t .      # 136 tests, about 25 s, no external network
 python3 examples/demo.py                         # timeline of healthy / failed / degraded / recovered
 ```
 

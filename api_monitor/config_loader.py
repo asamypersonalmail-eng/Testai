@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 
 import jsonschema
 
-from secrets_resolver import PURE_SECRET_REF_RE, check_references
+from secrets_resolver import PURE_SECRET_REF_RE, check_references, iter_references
 from validators import RuleConfigError, ValidationSpec, compile_rule
 
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.schema.json")
@@ -121,6 +121,7 @@ class ServiceConfig:
     alerting: AlertPolicy
     fingerprint: str
     raw: Dict[str, Any] = field(repr=False, default_factory=dict)
+    variables: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -283,6 +284,14 @@ def _build_service(raw_svc: Dict[str, Any], defaults: Dict[str, Any], top: Dict[
     method = request["method"].upper()
     if method not in security["allowed_methods"]:
         errors.append(f"{prefix}: method {method} is not in security.allowed_methods")
+    variables = {k: str(v) for k, v in (top.get("variables") or {}).items()}
+    variables.update({k: str(v) for k, v in (raw_svc.get("variables") or {}).items()})
+    for kind, ref in iter_references(request):
+        if kind == "var" and ref not in variables:
+            errors.append(f"{prefix}: ${{var:{ref}}} is used but not defined in 'variables'")
+    for name, value in variables.items():
+        if any(kind == "var" for kind, _ in iter_references(value)):
+            errors.append(f"{prefix}: variable '{name}' must not reference another ${{var:...}}")
     if "${" in urlsplit(request["url"]).netloc or "${" in urlsplit(request["url"]).scheme:
         errors.append(f"{prefix}: url: ${{...}} references are only allowed in the path/query, not the host")
     reason = allowlist.check(request["url"])
@@ -384,6 +393,7 @@ def _build_service(raw_svc: Dict[str, Any], defaults: Dict[str, Any], top: Dict[
         alerting=policy,
         fingerprint=fingerprint,
         raw=raw_svc,
+        variables=variables,
     )
 
 
@@ -492,4 +502,5 @@ def secret_reference_problems(config: AppConfig) -> List[str]:
     for svc in config.services:
         if svc.enabled:
             problems.extend(f"services[{svc.id}]: {p}" for p in check_references(svc.raw.get("request", {})))
+            problems.extend(f"services[{svc.id}]: {p}" for p in check_references(svc.variables))
     return problems

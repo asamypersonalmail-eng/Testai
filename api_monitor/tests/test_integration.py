@@ -221,10 +221,11 @@ class EndToEndTests(IntegrationBase):
 class GetPositionSampleTests(IntegrationBase):
     """The getPosition sample: GET /v1/customers/{id}/position?online=true, healthy = HTTP 200 + data."""
 
-    def position_service(self):
+    def position_service(self, customer_id="1000649149"):
         return make_service(
             "get-position", "unused",
-            request={"url": self.backend.url("/v1/customers/${env:POSITION_CUST}/position"), "method": "GET",
+            variables={"customer_id": customer_id},
+            request={"url": self.backend.url("/v1/customers/${var:customer_id}/position"), "method": "GET",
                      "headers": {"Accept": "application/json"}, "query_params": {"online": "true"}},
             validation={"expected_status": [200], "body_format": "json", "content_type": None,
                         "rules": {"all": [{"type": "json_exists", "path": "$.data"},
@@ -232,21 +233,31 @@ class GetPositionSampleTests(IntegrationBase):
 
     def test_get_position(self):
         path = "/v1/customers/1000649149/position"
-        with mock.patch.dict(os.environ, {"POSITION_CUST": "1000649149"}):
-            self.build([self.position_service()])
-            self.backend.routes[path] = json_reply({"data": [{"accountId": "x", "position": 10}]})
-            ok = self.run_check("get-position")
-            self.assertEqual(ok.outcome, Outcome.SUCCESS, ok.actual)
-            req = self.backend.requests_for(path)[-1]
-            self.assertEqual(req["method"], "GET")
-            self.assertIn("online=true", req["raw_path"])
-            for body in ({"data": []}, {"data": {}}, {"result": "no data"}):
-                self.backend.routes[path] = json_reply(body)
-                self.assertEqual(self.run_check("get-position").classification,
-                                 FailureClass.RESPONSE_VALIDATION_FAILED, body)
-            self.backend.routes[path] = json_reply({"data": [1]}, status=500)
-            self.assertEqual(self.run_check("get-position").classification, FailureClass.HTTP_ERROR)
+        self.build([self.position_service()])
+        self.backend.routes[path] = json_reply({"data": [{"accountId": "x", "position": 10}]})
+        ok = self.run_check("get-position")
+        self.assertEqual(ok.outcome, Outcome.SUCCESS, ok.actual)
+        req = self.backend.requests_for(path)[-1]
+        self.assertEqual(req["method"], "GET")
+        self.assertIn("online=true", req["raw_path"])
+        for body in ({"data": []}, {"data": {}}, {"result": "no data"}):
+            self.backend.routes[path] = json_reply(body)
+            self.assertEqual(self.run_check("get-position").classification,
+                             FailureClass.RESPONSE_VALIDATION_FAILED, body)
+        self.backend.routes[path] = json_reply({"data": [1]}, status=500)
+        self.assertEqual(self.run_check("get-position").classification, FailureClass.HTTP_ERROR)
         self.assertNotIn("1000649149", self.read_logs())
+
+    def test_customer_id_change_needs_no_code_change(self):
+        self.build([self.position_service(customer_id="2000000001")])
+        self.backend.routes["/v1/customers/2000000001/position"] = json_reply({"data": [1]})
+        self.assertEqual(self.run_check("get-position").outcome, Outcome.SUCCESS)
+
+    def test_variable_value_can_come_from_environment(self):
+        with mock.patch.dict(os.environ, {"POSITION_CUST": "3000000002"}):
+            self.build([self.position_service(customer_id="${env:POSITION_CUST}")])
+            self.backend.routes["/v1/customers/3000000002/position"] = json_reply({"data": [1]})
+            self.assertEqual(self.run_check("get-position").outcome, Outcome.SUCCESS)
 
 
 class CliTests(IntegrationBase):

@@ -11,6 +11,7 @@
     "environment": {"type": "string", "enum": ["PROD", "UAT", "SIT", "DEV", "DR"]},
     "monitor_host_id": {"type": ["string", "null"], "maxLength": 128},
     "monitoring_enabled": {"type": "boolean"},
+    "variables": {"$ref": "#/$defs/variables"},
     "defaults": {
       "type": "object",
       "additionalProperties": false,
@@ -143,6 +144,12 @@
       "items": {"type": "integer", "minimum": 100, "maximum": 599}
     },
     "stringMap": {"type": "object", "additionalProperties": {"type": "string"}},
+    "variables": {
+      "type": "object",
+      "description": "Named values referenced as ${var:name} in the request (url path/query, headers, body).",
+      "propertyNames": {"pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"},
+      "additionalProperties": {"type": ["string", "number", "integer"]}
+    },
     "interval": {
       "type": "object",
       "additionalProperties": false,
@@ -312,6 +319,7 @@
         "operation_type": {"const": "INQUIRY", "description": "Only read-only inquiry operations may be monitored."},
         "read_only": {"const": true},
         "endpoint_label": {"type": "string", "maxLength": 200},
+        "variables": {"$ref": "#/$defs/variables"},
         "request": {"$ref": "#/$defs/request"},
         "interval": {"$ref": "#/$defs/interval"},
         "timeout": {"$ref": "#/$defs/timeout"},

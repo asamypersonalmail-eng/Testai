@@ -177,8 +177,8 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual([r.service_id for r in only_b], ["b"])
 
     def test_run_forever_stops_gracefully(self):
+        self.clock = time.monotonic  # real clock from the start (fake clock values are unrelated to uptime)
         sched = self.make([self.svc("a", 30)])
-        sched._clock = time.monotonic
         thread = threading.Thread(target=sched.run_forever)
         thread.start()
         self.assertTrue(wait_until(lambda: "a" in self.checker.calls))

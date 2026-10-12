@@ -151,6 +151,27 @@ class ConfigTests(unittest.TestCase):
         raw = self._raw(request={"url": "http://${env:HOST}:8080/ok", "method": "GET"})
         self.assertConfigError(raw, "only allowed in the path/query")
 
+    def test_variables_global_and_service_override(self):
+        raw = self._raw(variables={"customer_id": "111"},
+                        request={"url": "http://127.0.0.1:8080/c/${var:customer_id}/${var:region}", "method": "GET"})
+        raw["variables"] = {"customer_id": "999", "region": "eu"}
+        svc = parse_config(raw).services[0]
+        self.assertEqual(svc.variables, {"customer_id": "111", "region": "eu"})
+
+    def test_undefined_variable_rejected(self):
+        raw = self._raw(request={"url": "http://127.0.0.1:8080/c/${var:customer_id}", "method": "GET"})
+        self.assertConfigError(raw, "${var:customer_id} is used but not defined")
+
+    def test_nested_variable_rejected(self):
+        raw = self._raw(variables={"a": "${var:b}", "b": "1"},
+                        request={"url": "http://127.0.0.1:8080/c/${var:a}", "method": "GET"})
+        self.assertConfigError(raw, "must not reference another")
+
+    def test_numeric_variable_allowed(self):
+        raw = self._raw(variables={"customer_id": 1000649149},
+                        request={"url": "http://127.0.0.1:8080/c/${var:customer_id}", "method": "GET"})
+        self.assertEqual(parse_config(raw).services[0].variables["customer_id"], "1000649149")
+
     def test_load_from_file_records_hash(self):
         path = write_config(self.dir, self._raw())
         config = load_config(path)

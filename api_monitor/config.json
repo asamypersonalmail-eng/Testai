@@ -268,8 +268,11 @@
       "operation_type": "INQUIRY",
       "read_only": true,
       "endpoint_label": "getPosition /v1/customers/{id}/position",
+      "variables": {
+        "customer_id": "1000649149"
+      },
       "request": {
-        "url": "http://position-api.prod.bank.internal:9999/v1/customers/${env:APIMON_POSITION_CUSTOMER_ID}/position",
+        "url": "http://position-api.prod.bank.internal:9999/v1/customers/${var:customer_id}/position",
         "method": "GET",
         "headers": {"Accept": "application/json", "X-Request-Id": "${gen:uuid}"},
         "query_params": {"online": "true"}

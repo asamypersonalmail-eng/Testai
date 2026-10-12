@@ -15,7 +15,7 @@ from __future__ import annotations
 import socket
 import ssl
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, Optional, Tuple
 from urllib.parse import urljoin, urlsplit
 
@@ -47,6 +47,7 @@ class RequestSpec:
     client_cert: Optional[Dict[str, str]] = None
     url_label: str = ""
     resolve_body: bool = True  # False when the body was already rendered (e-mail payloads)
+    variables: Dict[str, str] = field(default_factory=dict)  # values for ${var:name}
 
 
 @dataclass
@@ -171,14 +172,14 @@ class SecureHttpClient:
         if method not in self.allowed_methods and method not in extra_methods:
             return AttemptResult(None, FailureClass.CONFIGURATION_ERROR, f"method {method} not allowed", 0.0)
         try:
-            # ${env:...} is allowed in the URL path/query (e.g. a synthetic customer id), never in the host.
-            resolved_url = resolve(spec.url)
-            headers = resolve(dict(spec.headers))
-            params = resolve(dict(spec.query_params))
-            auth_cfg = resolve(dict(spec.auth))
-            body = (resolve(spec.body) if spec.resolve_body else spec.body) if spec.body else None
+            # ${var:...} / ${env:...} may be used in the URL path/query (e.g. a test customer id), never the host.
+            resolved_url = resolve(spec.url, spec.variables)
+            headers = resolve(dict(spec.headers), spec.variables)
+            params = resolve(dict(spec.query_params), spec.variables)
+            auth_cfg = resolve(dict(spec.auth), spec.variables)
+            body = (resolve(spec.body, spec.variables) if spec.resolve_body else spec.body) if spec.body else None
         except SecretResolutionError as exc:
-            return AttemptResult(None, FailureClass.CONFIGURATION_ERROR, f"secret resolution failed: {exc}", 0.0)
+            return AttemptResult(None, FailureClass.CONFIGURATION_ERROR, f"reference resolution failed: {exc}", 0.0)
 
         reason = self.allowlist.check(resolved_url)
         if reason:
