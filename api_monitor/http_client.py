@@ -276,5 +276,7 @@ class SecureHttpClient:
             elapsed_ms=elapsed(),
             url_label=spec.url_label,
             redirects_followed=redirects,
+            request_url=response.request.url or "",
+            request_headers=dict(response.request.headers),
         )
         return AttemptResult(data, None, "", data.elapsed_ms)

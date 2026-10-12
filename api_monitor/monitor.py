@@ -30,12 +30,13 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from alert_manager import AlertManager  # noqa: E402
-from checker import ServiceChecker  # noqa: E402
+from checker import ServiceChecker, build_request_spec  # noqa: E402
 from config_loader import AppConfig, ConfigError, load_config, secret_reference_problems  # noqa: E402
 from email_client import EmailClient, make_test_context, recipients_for  # noqa: E402
 from http_client import SecureHttpClient  # noqa: E402
 from logging_config import get_logger, log_event, setup_logging  # noqa: E402
 from models import Outcome  # noqa: E402
+from validators import validate_response  # noqa: E402
 from platform_compat import lock_fd, unlock_fd  # noqa: E402
 from rate_limiter import SlidingWindowCounter, TokenBucket  # noqa: E402
 from reporting import StatsCollector, build_report, write_csv  # noqa: E402
@@ -218,6 +219,8 @@ def cmd_check(args: argparse.Namespace) -> int:
             print("--apply needs exclusive access; stop the running monitor or run without --apply",
                   file=sys.stderr)
             return EXIT_LOCKED
+    if args.show_response:
+        return _show_response(config, service)
     try:
         runtime = Runtime(config, threading.Event(), persist_state=bool(args.apply))
         checker = runtime.checker_factory(config)
@@ -227,6 +230,43 @@ def cmd_check(args: argparse.Namespace) -> int:
     finally:
         if lock is not None:
             lock.release()
+
+
+SHOW_SECRET_HEADERS = ("authorization", "proxy-authorization", "x-api-key", "api-key", "apikey", "cookie",
+                       "x-auth-token", "x-access-token")
+
+
+def _show_response(config: AppConfig, service: Any) -> int:
+    """Troubleshooting: send ONE request and print what was sent and received to the console only.
+
+    Nothing here is written to the log files or the state file. Credential headers are masked,
+    but the response body is printed as received - do not paste it anywhere public.
+    """
+    http = SecureHttpClient(config.security, int(config.limits["max_response_bytes"]))
+    attempt = http.execute(build_request_spec(service))
+    print("=" * 70)
+    print("TROUBLESHOOTING OUTPUT - console only, not logged. Response body may contain customer data.")
+    print("=" * 70)
+    if attempt.response is None:
+        cls = attempt.classification.value if attempt.classification else "ERROR"
+        print(f"No HTTP response: {cls}: {attempt.detail} ({attempt.elapsed_ms:.0f} ms)")
+        return EXIT_CHECK_FAILED
+    resp = attempt.response
+    print(f"REQUEST   {service.method} {resp.request_url}")
+    for name, value in resp.request_headers.items():
+        shown = "***" if name.lower() in SHOW_SECRET_HEADERS else value
+        print(f"  {name}: {shown}")
+    print(f"\nRESPONSE  HTTP {resp.status_code}  ({resp.elapsed_ms:.0f} ms, {len(resp.body)} bytes)")
+    for name, value in resp.headers.items():
+        print(f"  {name}: {value}")
+    body = resp.body[:4000].decode("utf-8", errors="replace")
+    print("\nBODY" + (" (first 4000 bytes)" if len(resp.body) > 4000 else ""))
+    print(body if body.strip() else "  <empty>")
+    report = validate_response(resp, service.validation)
+    print(f"\nRESULT    {report.outcome.value}"
+          + (f"  {report.classification.value}" if report.classification else "")
+          + f"\n  expected: {report.expected}\n  actual:   {report.actual}")
+    return EXIT_CHECK_FAILED if report.outcome == Outcome.FAILURE else EXIT_OK
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -307,6 +347,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_check = sub.add_parser("check", help="run one service on demand")
     p_check.add_argument("service_id")
     p_check.add_argument("--apply", action="store_true", help="update state and send alerts (default: dry run)")
+    p_check.add_argument("--show-response", action="store_true",
+                         help="troubleshooting: print the request sent and the full response (console only)")
     p_check.set_defaults(func=cmd_check)
     p_val = sub.add_parser("validate", help="validate configuration")
     p_val.add_argument("--check-secrets", action="store_true", help="also verify referenced env vars / files")

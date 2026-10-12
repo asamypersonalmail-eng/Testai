@@ -60,6 +60,9 @@ class HttpResponseData:
     elapsed_ms: float
     url_label: str = ""
     redirects_followed: int = 0
+    # What was actually sent - kept in memory only for `check --show-response`; never logged or persisted.
+    request_url: str = ""
+    request_headers: Dict[str, str] = field(default_factory=dict)
 
     @property
     def content_type(self) -> str:

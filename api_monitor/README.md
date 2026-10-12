@@ -37,7 +37,7 @@ Requires Python 3.8+ from python.org, with "Add python.exe to PATH" ticked.
 py -3 -m venv venv
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 
-# 1. Prove it works (no network needed): 136 tests plus a demo
+# 1. Prove it works (no network needed): 137 tests plus a demo
 .\venv\Scripts\python.exe -m unittest discover -s tests -t .
 .\venv\Scripts\python.exe examples\demo.py
 
@@ -116,7 +116,7 @@ For a permanent installation, see section 2 (systemd, AIX SRC, cron).
 | `reporting.py` | Statistics, P50/P95/P99, failure trends, alert history, CSV export |
 | `models.py` | Shared enums and data classes |
 | `platform_compat.py` | Cross-platform file locking (`fcntl` on Linux/AIX, `msvcrt` on Windows) |
-| `tests/` | 136 unit and integration tests (real sockets against local mock servers) |
+| `tests/` | 137 unit and integration tests (real sockets against local mock servers) |
 | `examples/demo.py` | Self-contained demo of healthy, failed, degraded and recovered services |
 | `deploy/systemd/` | systemd unit, timer alternative, secrets env example |
 | `deploy/aix/` | ksh wrapper, SRC registration, crontab example |
@@ -182,6 +182,9 @@ python monitor.py -c CONFIG once [--all] [--service ID ...]
                                                     # one cycle; only due services unless --all / --service
 python monitor.py -c CONFIG check SERVICE_ID [--apply]
                                                     # on-demand check; dry run (no state, no email) unless --apply
+python monitor.py -c CONFIG check SERVICE_ID --show-response
+                                                    # troubleshooting: print the exact request and full response
+                                                    # (console only; credentials masked; nothing logged or saved)
 python monitor.py -c CONFIG validate [--check-secrets]
 python monitor.py -c CONFIG status [--json]
 python monitor.py -c CONFIG report [--hours 24] [--service ID] [--csv out.csv]
@@ -517,7 +520,7 @@ resets everything.
 
 ```bash
 cd api_monitor
-python3 -m unittest discover -s tests -t .      # 136 tests, about 25 s, no external network
+python3 -m unittest discover -s tests -t .      # 137 tests, about 25 s, no external network
 python3 examples/demo.py                         # timeline of healthy / failed / degraded / recovered
 ```
 

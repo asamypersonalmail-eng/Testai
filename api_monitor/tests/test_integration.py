@@ -351,6 +351,19 @@ class CliTests(IntegrationBase):
         with open(csv_path) as handle:
             self.assertIn("acct-inquiry", handle.read())
 
+    def test_show_response_prints_request_and_error_body(self):
+        self.backend.routes["/acct"] = json_reply({"errorCode": "MISSING_HEADER", "message": "X-Channel-Id required"},
+                                                  status=400)
+        self.write([self.service()])
+        code, out, _ = self.cli("check", "acct-inquiry", "--show-response")
+        self.assertEqual(code, monitor.EXIT_CHECK_FAILED)
+        self.assertIn("RESPONSE  HTTP 400", out)
+        self.assertIn("X-Channel-Id required", out)
+        self.assertIn("Authorization: ***", out)          # credentials masked
+        self.assertNotIn(SECRET_TOKEN, out)
+        self.assertFalse(os.path.exists(self.config.state_file))
+        self.assertEqual(len(self.backend.requests_for("/acct")), 1)  # exactly one request
+
     def test_test_email_command(self):
         self.write([self.service()])
         code, out, _ = self.cli("test-email")
