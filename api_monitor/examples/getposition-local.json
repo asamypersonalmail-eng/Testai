@@ -1,0 +1,78 @@
+{
+  "$comment": "Ready-to-run local trial: only getPosition, email notifications OFF, files under .\\runtime next to where you start it. Copy to my-config.json and adjust.",
+  "config_version": 1,
+  "environment": "UAT",
+  "monitoring_enabled": true,
+
+  "limits": {
+    "max_concurrent_checks": 2,
+    "max_requests_per_cycle": 10,
+    "max_requests_per_minute": 10,
+    "max_retries_per_minute": 5,
+    "max_response_bytes": 1048576,
+    "min_interval_seconds": 60,
+    "scheduler_tick_seconds": 1,
+    "startup_jitter_seconds": 0,
+    "schedule_jitter_seconds": 2,
+    "shutdown_grace_seconds": 20
+  },
+
+  "security": {
+    "allowed_hosts": ["172.17.55.101:2027", "mail-api.example.internal"],
+    "allowed_schemes": ["http", "https"],
+    "allowed_methods": ["GET", "POST"],
+    "allow_redirects": false,
+    "forbidden_url_keywords": ["transfer", "payment", "debit", "withdraw", "reversal"]
+  },
+
+  "logging": {"directory": "runtime/logs", "level": "INFO", "rotation": "daily", "retention_days": 14, "console": true},
+  "state": {"directory": "runtime/state", "file": "health_state.json"},
+  "runtime": {"lock_file": "runtime/state/monitor.lock"},
+  "reload": {"enabled": true, "watch_interval_seconds": 10, "on_sighup": true},
+  "reporting": {"history_size": 500, "stats_log_interval_seconds": 600, "csv_summary_path": "runtime/reports/summary.csv"},
+
+  "notifications": {
+    "enabled": false,
+    "default_recipients": [],
+    "email_api": {
+      "url": "https://mail-api.example.internal/send",
+      "method": "POST",
+      "payload_format": "json",
+      "payload_template": {"to": "{{recipients}}", "subject": "{{subject}}", "body": "{{body}}"}
+    }
+  },
+
+  "services": [
+    {
+      "id": "get-position",
+      "name": "getPosition",
+      "enabled": true,
+      "operation_type": "INQUIRY",
+      "read_only": true,
+      "endpoint_label": "getPosition /v1/customers/{id}/position",
+      "variables": {"customer_id": "1000649149"},
+      "request": {
+        "url": "http://172.17.55.101:2027/v1/customers/${var:customer_id}/position",
+        "method": "GET",
+        "headers": {"Accept": "application/json"},
+        "query_params": {"online": "true"}
+      },
+      "interval": {"value": 1, "unit": "minutes"},
+      "timeout": {"connect_seconds": 5, "read_seconds": 15, "total_seconds": 20},
+      "retry": {"max_attempts": 2, "backoff_initial_seconds": 3, "jitter_seconds": 1, "max_total_seconds": 50},
+      "validation": {
+        "expected_status": [200],
+        "body_format": "json",
+        "rules": {
+          "all": [
+            {"type": "json_exists", "path": "$.data", "description": "response contains data"},
+            {"type": "json_min_items", "path": "$.data", "min": 1, "description": "data is not empty"}
+          ]
+        }
+      },
+      "response_time": {"warning_ms": 3000, "critical_ms": 15000},
+      "alerting": {"failure_threshold": 2, "recovery_threshold": 2,
+                   "suppression_interval_seconds": 1800, "reminder_interval_seconds": 3600}
+    }
+  ]
+}
