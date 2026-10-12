@@ -67,7 +67,9 @@ class HttpClientTests(unittest.TestCase):
             self.assertEqual(result.response.status_code, code)
 
     def test_connection_refused(self):
-        result = self.client.execute(make_spec(f"http://127.0.0.1:{closed_port()}/x"))
+        # generous connect timeout: Windows retries a refused localhost connect for ~2 s
+        result = self.client.execute(make_spec(f"http://127.0.0.1:{closed_port()}/x",
+                                               connect_timeout=5.0, total_timeout=6.0))
         self.assertEqual(result.classification, FailureClass.CONNECTION_ERROR)
         self.assertEqual(result.detail, "connection refused")
 

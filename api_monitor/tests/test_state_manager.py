@@ -41,8 +41,9 @@ class StateManagerTests(unittest.TestCase):
             sm.put(ServiceState("svc", consecutive_successes=i))
         files = os.listdir(os.path.dirname(self.path))
         self.assertEqual(sorted(files), ["state.json", "state.json.lock"])
-        mode = stat.S_IMODE(os.stat(self.path).st_mode)
-        self.assertEqual(mode & 0o007, 0)
+        if os.name != "nt":  # POSIX permission bits do not apply on Windows
+            mode = stat.S_IMODE(os.stat(self.path).st_mode)
+            self.assertEqual(mode & 0o007, 0)
 
     def test_corrupt_file_is_quarantined(self):
         os.makedirs(os.path.dirname(self.path))

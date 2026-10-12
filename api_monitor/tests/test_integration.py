@@ -8,7 +8,7 @@ import threading
 import unittest
 from unittest import mock
 
-from tests.helpers import MockServer, json_reply, make_raw_config, make_service, write_config
+from tests.helpers import MockServer, close_logging, json_reply, make_raw_config, make_service, write_config
 
 import monitor
 from config_loader import load_config
@@ -34,6 +34,7 @@ class IntegrationBase(unittest.TestCase):
         self.env.start()
 
     def tearDown(self):
+        close_logging()
         self.env.stop()
         self.backend.__exit__(None, None, None)
         self.mail.__exit__(None, None, None)

@@ -36,15 +36,11 @@ from email_client import EmailClient, make_test_context, recipients_for  # noqa:
 from http_client import SecureHttpClient  # noqa: E402
 from logging_config import get_logger, log_event, setup_logging  # noqa: E402
 from models import Outcome  # noqa: E402
+from platform_compat import lock_fd, unlock_fd  # noqa: E402
 from rate_limiter import SlidingWindowCounter, TokenBucket  # noqa: E402
 from reporting import StatsCollector, build_report, write_csv  # noqa: E402
 from scheduler import MonitorScheduler  # noqa: E402
 from state_manager import StateManager, read_state_file  # noqa: E402
-
-try:
-    import fcntl
-except ImportError:  # pragma: no cover
-    fcntl = None  # type: ignore[assignment]
 
 EXIT_OK, EXIT_CHECK_FAILED, EXIT_CONFIG, EXIT_LOCKED, EXIT_RUNTIME = 0, 1, 2, 3, 4
 LOG = get_logger("main")
@@ -60,22 +56,19 @@ class InstanceLock:
     def acquire(self) -> bool:
         os.makedirs(os.path.dirname(os.path.abspath(self.path)), mode=0o750, exist_ok=True)
         fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o640)
-        if fcntl is not None:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError:
-                os.close(fd)
-                return False
-        os.ftruncate(fd, 0)
-        os.write(fd, f"{os.getpid()}\n".encode())
+        if not lock_fd(fd, exclusive=True, blocking=False):
+            os.close(fd)
+            return False
+        # Fixed-width PID record written in place (Windows cannot truncate a locked region).
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.write(fd, f"{os.getpid():<20}\n".encode())
         self._fd = fd
         return True
 
     def release(self) -> None:
         if self._fd is not None:
             try:
-                if fcntl is not None:
-                    fcntl.flock(self._fd, fcntl.LOCK_UN)
+                unlock_fd(self._fd)
             finally:
                 os.close(self._fd)
                 self._fd = None
@@ -154,6 +147,8 @@ def _install_signals(stop: threading.Event, scheduler: Optional[MonitorScheduler
 
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
+    if hasattr(signal, "SIGBREAK"):  # Windows: Ctrl+Break / console close
+        signal.signal(signal.SIGBREAK, _stop)
     if scheduler is not None and hasattr(signal, "SIGHUP") and config.reload.get("on_sighup", True):
         signal.signal(signal.SIGHUP, lambda s, f: scheduler.request_reload())
 

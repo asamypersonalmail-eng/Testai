@@ -63,7 +63,8 @@ def _read_secret_file(path: str) -> str:
         raise SecretResolutionError(f"secret file is not accessible ({exc.__class__.__name__})") from None
     if not stat.S_ISREG(st.st_mode):
         raise SecretResolutionError("secret file is not a regular file")
-    if st.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+    # POSIX permission bits are meaningless on Windows; protect the file with NTFS ACLs there.
+    if os.name != "nt" and st.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
         raise SecretResolutionError("secret file must not be accessible by group/other (use chmod 600)")
     if st.st_size > MAX_SECRET_FILE_BYTES:
         raise SecretResolutionError("secret file is too large")

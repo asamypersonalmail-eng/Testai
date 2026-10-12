@@ -13,8 +13,86 @@ alerts through your existing middleware email API.
 - An HTTP 200 alone does not count as healthy. The business payload is always
   validated, so for example `{"status":"FAILED","errorCode":"CORE_TIMEOUT"}` is
   reported as a failure.
-- It runs on Linux (systemd) and AIX (SRC, inittab or cron), either as a daemon
+- It runs on Linux (systemd), AIX (SRC, inittab or cron) and Windows (Task Scheduler), either as a daemon
   or in single-cycle mode.
+
+---
+
+## Quick start: pull and run
+
+### Get the code
+
+```bash
+git clone https://github.com/asamypersonalmail-eng/Testai.git
+cd Testai
+git checkout HealthCheck            # already cloned? run: git fetch origin && git checkout HealthCheck && git pull
+cd api_monitor
+```
+
+### Windows (PowerShell)
+
+Requires Python 3.8+ from python.org, with "Add python.exe to PATH" ticked.
+
+```powershell
+py -3 -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# 1. Prove it works (no network needed): 130 tests plus a demo
+.\venv\Scripts\python.exe -m unittest discover -s tests -t .
+.\venv\Scripts\python.exe examples\demo.py
+
+# 2. Make your own config and point the paths at Windows folders
+copy config.json my-config.json
+#    edit my-config.json: logging.directory -> C:\\ProgramData\\api-monitor\\logs
+#                         state.directory   -> C:\\ProgramData\\api-monitor\\state
+#                         runtime.lock_file -> C:\\ProgramData\\api-monitor\\state\\monitor.lock
+#                         security.ca_bundle -> your internal CA .pem (or null)
+#    (in JSON every backslash is written twice, or use forward slashes: C:/ProgramData/api-monitor/logs)
+
+# 3. Secrets for this PowerShell window only
+$env:APIMON_POSITION_CUSTOMER_ID = "<synthetic test customer id>"
+$env:APIMON_EMAIL_API_KEY = "..."
+
+# 4. Validate, try one service, then run
+.\venv\Scripts\python.exe monitor.py -c my-config.json validate --check-secrets
+.\venv\Scripts\python.exe monitor.py -c my-config.json check get-position    # dry run, no email
+.\venv\Scripts\python.exe monitor.py -c my-config.json --console run         # Ctrl+C to stop
+```
+
+To run it unattended on Windows, pick **one** option:
+
+- **Task Scheduler (recommended):** copy the project to `C:\api-monitor`, put the config
+  in `C:\ProgramData\api-monitor\config.json` and the secrets in
+  `C:\ProgramData\api-monitor\secrets.env` (same `KEY=value` format as
+  `deploy/systemd/secrets.env.example`). Restrict that file's NTFS permissions to
+  Administrators and the account that runs the task. Then, in an elevated PowerShell,
+  run `deploy\windows\install-task.ps1`. It runs `once` every 5 minutes, and each
+  service is checked only when its own interval is due.
+- **Windows service:** wrap `deploy\windows\run-monitor.ps1 -Mode run` with a service
+  wrapper such as NSSM or WinSW (they are not bundled), set to restart on failure.
+
+Windows differences:
+- There is no `SIGHUP`. Config changes are picked up by the file watcher (`reload.watch_interval_seconds`).
+- Stop with Ctrl+C, Ctrl+Break, or by stopping the service or task.
+- Locking uses `msvcrt`, so a second copy is still refused (exit code 3).
+- `${file:…}` secret files are not permission-checked on Windows; protect them with NTFS ACLs instead.
+- The Windows code paths were written to be compatible but have only been tested on Linux.
+  Run the test suite on the Windows host before relying on it.
+
+### Linux / AIX
+
+```bash
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
+./venv/bin/python -m unittest discover -s tests -t .
+cp config.json my-config.json             # edit paths, hosts, recipients
+export APIMON_POSITION_CUSTOMER_ID=...    # and the other APIMON_* secrets
+./venv/bin/python monitor.py -c my-config.json validate --check-secrets
+./venv/bin/python monitor.py -c my-config.json check get-position
+./venv/bin/python monitor.py -c my-config.json --console run
+```
+
+For a permanent installation, see section 2 (systemd, AIX SRC, cron).
 
 ---
 
@@ -38,10 +116,12 @@ alerts through your existing middleware email API.
 | `rate_limiter.py` | Token bucket and sliding window limiters |
 | `reporting.py` | Statistics, P50/P95/P99, failure trends, alert history, CSV export |
 | `models.py` | Shared enums and data classes |
+| `platform_compat.py` | Cross-platform file locking (`fcntl` on Linux/AIX, `msvcrt` on Windows) |
 | `tests/` | 130 unit and integration tests (real sockets against local mock servers) |
 | `examples/demo.py` | Self-contained demo of healthy, failed, degraded and recovered services |
 | `deploy/systemd/` | systemd unit, timer alternative, secrets env example |
 | `deploy/aix/` | ksh wrapper, SRC registration, crontab example |
+| `deploy/windows/` | PowerShell runner (loads secrets) and Task Scheduler installer |
 
 ---
 

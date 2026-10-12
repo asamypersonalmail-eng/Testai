@@ -222,6 +222,16 @@ def deep(obj: Any) -> Any:
     return copy.deepcopy(obj)
 
 
+def close_logging() -> None:
+    """Close monitor log handlers so temp directories can be deleted (required on Windows)."""
+    import logging
+    for name in ("apimon", "apimon.events"):
+        logger = logging.getLogger(name)
+        for handler in list(logger.handlers):
+            logger.removeHandler(handler)
+            handler.close()
+
+
 def wait_until(predicate: Callable[[], bool], timeout: float = 5.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

@@ -5,7 +5,7 @@ classifications, incident metadata). Response bodies, headers, payloads and
 credentials are never written.
 
 Writes are atomic (temp file + fsync + ``os.replace``) and serialised with an
-in-process lock plus an advisory ``fcntl`` lock on a side-car lock file, so a
+in-process lock plus an inter-process lock (``fcntl`` / ``msvcrt``) on a side-car lock file, so a
 concurrent ``status`` reader or a second process never sees a torn file.
 """
 from __future__ import annotations
@@ -23,10 +23,7 @@ from typing import Any, Dict, Iterable, Iterator, Optional
 
 from logging_config import get_logger, log_event
 
-try:  # POSIX (Linux, AIX)
-    import fcntl
-except ImportError:  # pragma: no cover - non-POSIX platforms are not supported for production
-    fcntl = None  # type: ignore[assignment]
+from platform_compat import IS_WINDOWS, lock_fd, unlock_fd
 
 STATE_VERSION = 1
 LOG = get_logger("state")
@@ -34,19 +31,16 @@ LOG = get_logger("state")
 
 @contextmanager
 def file_lock(lock_path: str, exclusive: bool) -> Iterator[None]:
-    """Advisory inter-process lock on a side-car file (no-op where fcntl is unavailable)."""
-    if fcntl is None:
-        yield
-        return
+    """Inter-process lock on a side-car file (fcntl on POSIX, msvcrt on Windows)."""
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o640)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
-        yield
-    finally:
+        lock_fd(fd, exclusive=exclusive)
         try:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            yield
         finally:
-            os.close(fd)
+            unlock_fd(fd)
+    finally:
+        os.close(fd)
 
 
 @dataclass
@@ -176,6 +170,8 @@ class StateManager:
                 except OSError:
                     pass
                 raise
+            if IS_WINDOWS:
+                return  # directories cannot be opened/fsynced on Windows
             try:  # make the rename durable
                 dir_fd = os.open(directory, os.O_RDONLY)
                 try:

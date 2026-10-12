@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tests.helpers import FakeMonotonic
+from tests.helpers import FakeMonotonic, close_logging
 
 from logging_config import get_logger, log_event, mask_text, setup_logging
 from rate_limiter import SlidingWindowCounter, TokenBucket
@@ -35,6 +35,7 @@ class RedactionTests(unittest.TestCase):
                 handler.flush()
             with open(os.path.join(tmp, "monitor.log")) as handle:
                 text = handle.read()
+            close_logging()
         self.assertNotIn("Zq9-secret-value", text)
         first = json.loads(text.splitlines()[0])
         self.assertEqual(first["password"], "***")

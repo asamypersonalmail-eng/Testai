@@ -16,7 +16,7 @@ import threading
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
-from tests.helpers import MockServer, json_reply, make_raw_config, make_service, write_config  # noqa: E402
+from tests.helpers import MockServer, close_logging, json_reply, make_raw_config, make_service, write_config  # noqa: E402
 
 import monitor  # noqa: E402
 from config_loader import load_config  # noqa: E402
@@ -62,7 +62,8 @@ def main() -> None:
         for req in mail.requests_for("/mail"):
             payload = json.loads(req["body"])
             print(f"  - {payload['subject']}")
-        print(f"\nLogs written to a temporary directory (deleted on exit); state file: {config.state_file}")
+        print("\nLogs and state were written to a temporary directory that is deleted on exit.")
+        close_logging()  # release log files so the temporary directory can be removed (Windows)
 
 
 if __name__ == "__main__":
